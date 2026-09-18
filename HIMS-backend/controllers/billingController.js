@@ -45,8 +45,25 @@ export const createBill = async (req, res) => {
       hospital_code = 'BILL',
       overwrite_duplicates = false,
       user_id,
-      appointment_booking = null
+      appointment_booking = null,
+      priority = 'Routine',
+      referring_facility = null,
+      referring_clinician = null,
+      clinical_notes = null,
+      billing_type = 'Standard',
+      scheme_name = null,
     } = req.body;
+
+    const VALID_PRIORITIES = ['Routine', 'Urgent', 'STAT'];
+    if (!VALID_PRIORITIES.includes(priority)) {
+      return res.status(400).json({ success: false, message: 'priority must be Routine, Urgent, or STAT.' });
+    }
+    if (!['Standard', 'Free_Scheme'].includes(billing_type)) {
+      return res.status(400).json({ success: false, message: 'billing_type must be Standard or Free_Scheme.' });
+    }
+    if (billing_type === 'Free_Scheme' && !scheme_name?.trim()) {
+      return res.status(400).json({ success: false, message: 'scheme_name is required for a free-scheme order (e.g. "NFDS").' });
+    }
 
     // Enforce branch from JWT; Central admins may pass branch_id in body
     const callerBranch = req.user?.role_level !== 'Central' ? req.user?.branch_id : null;
@@ -59,9 +76,25 @@ export const createBill = async (req, res) => {
       });
     }
 
+    // Free-scheme charges are zeroed server-side, not trusted from the
+    // client — a scheme order is meant to never carry a real charge, and
+    // this is what keeps that true even if the billing screen sent stale
+    // prices. Standard orders are unaffected.
+    const effectiveItems = billing_type === 'Free_Scheme'
+      ? items.map(item => ({ ...item, unit_price: 0, total_price: 0 }))
+      : items;
+
     // Calculate totals
-    const total_amount = items.reduce((sum, item) => sum + (item.total_price || 0), 0);
-    const net_amount = total_amount - discount_amount;
+    const total_amount = effectiveItems.reduce((sum, item) => sum + (item.total_price || 0), 0);
+    const net_amount = billing_type === 'Free_Scheme' ? 0 : total_amount - discount_amount;
+
+    // A free-scheme order carries no charge to collect, so there is no
+    // "payment" step to gate the lab workflow on — mark it settled at
+    // creation instead of leaving it sitting as a Pending balance against a
+    // scheme patient (which would otherwise show up in cash-desk dues).
+    const effectivePaymentStatus = billing_type === 'Free_Scheme' ? 'Paid' : payment_status;
+    const effectivePaidAmount = billing_type === 'Free_Scheme' ? 0 : paid_amount;
+    const effectivePaymentMethod = billing_type === 'Free_Scheme' ? 'Other' : payment_method;
 
     // Generate bill number dynamically prefixing hospital code
     const bill_number = generateBillNumber(hospital_code);
@@ -91,24 +124,31 @@ export const createBill = async (req, res) => {
     // Insert bill
     const [billResult] = await connection.query(
       `INSERT INTO bills (
-        bill_number, patient_id, patient_name, patient_phone, total_amount, discount_amount, 
-        net_amount, payment_method, payment_status, paid_amount, status, notes, branch_id, created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        bill_number, patient_id, patient_name, patient_phone, total_amount, discount_amount,
+        net_amount, payment_method, payment_status, paid_amount, status, notes, branch_id, created_by,
+        priority, referring_facility, referring_clinician, clinical_notes, billing_type, scheme_name
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         bill_number,
         patient_id,
         final_patient_name,
         final_patient_phone,
         total_amount,
-        discount_amount,
+        billing_type === 'Free_Scheme' ? 0 : discount_amount,
         net_amount,
-        payment_method,
-        payment_status,
-        paid_amount,
+        effectivePaymentMethod,
+        effectivePaymentStatus,
+        effectivePaidAmount,
         'Active',
         notes || null,
         branch_id,
-        user_id || null
+        user_id || null,
+        priority,
+        referring_facility || null,
+        referring_clinician || null,
+        clinical_notes || null,
+        billing_type,
+        billing_type === 'Free_Scheme' ? scheme_name.trim() : null,
       ]
     );
     const bill_id = billResult.insertId;
@@ -116,7 +156,7 @@ export const createBill = async (req, res) => {
     // Deduplicate lab tests to prevent accidental double-billing of the same test
     const uniqueItems = [];
     const seenLabTests = new Set();
-    for (const item of items) {
+    for (const item of effectiveItems) {
       if (item.service_type === 'Laboratory') {
         if (seenLabTests.has(item.service_id)) {
           continue; // skip duplicate lab test
@@ -397,7 +437,9 @@ export const createBill = async (req, res) => {
         lab_samples,
         total_amount,
         net_amount,
-        payment_status: 'Pending'
+        billing_type,
+        scheme_name: billing_type === 'Free_Scheme' ? scheme_name.trim() : null,
+        payment_status: effectivePaymentStatus
       }
     });
 
@@ -672,17 +714,29 @@ export const updateBill = async (req, res) => {
       payment_status = 'Pending',
       paid_amount = 0,
       notes,
-      overwrite_duplicates = false
+      overwrite_duplicates = false,
+      priority,
+      referring_facility,
+      referring_clinician,
+      clinical_notes,
+      billing_type,
+      scheme_name,
     } = req.body;
 
     if (!items || items.length === 0) {
       return res.status(400).json({ success: false, message: 'At least one service item is required' });
     }
+    if (priority !== undefined && !['Routine', 'Urgent', 'STAT'].includes(priority)) {
+      return res.status(400).json({ success: false, message: 'priority must be Routine, Urgent, or STAT.' });
+    }
+    if (billing_type !== undefined && !['Standard', 'Free_Scheme'].includes(billing_type)) {
+      return res.status(400).json({ success: false, message: 'billing_type must be Standard or Free_Scheme.' });
+    }
 
     // Get the bill
     const scope = req.user?.role_level !== 'Central' ? req.user?.branch_id : null;
     const [billRows] = await connection.query(
-      `SELECT id, bill_number FROM bills WHERE (bill_number = ? OR id = ?) ${scope ? 'AND branch_id = ?' : ''}`,
+      `SELECT id, bill_number, billing_type FROM bills WHERE (bill_number = ? OR id = ?) ${scope ? 'AND branch_id = ?' : ''}`,
       scope ? [id, id, scope] : [id, id]
     );
     if (billRows.length === 0) {
@@ -691,14 +745,42 @@ export const updateBill = async (req, res) => {
     }
     const internal_bill_id = billRows[0].id;
     const bill_number = billRows[0].bill_number;
+    // Whether THIS update turns the order into/keeps it as free-scheme —
+    // falls back to whatever's already on the bill if the caller doesn't
+    // resend billing_type, same COALESCE spirit as the other optional fields.
+    const effectiveBillingType = billing_type || billRows[0].billing_type;
+    if (effectiveBillingType === 'Free_Scheme' && billing_type === 'Free_Scheme' && !scheme_name?.trim()) {
+      return res.status(400).json({ success: false, message: 'scheme_name is required for a free-scheme order (e.g. "NFDS").' });
+    }
 
-    const total_amount = items.reduce((sum, item) => sum + (item.total_price || 0), 0);
-    const net_amount = total_amount - discount_amount;
+    const effectiveItems = effectiveBillingType === 'Free_Scheme'
+      ? items.map(item => ({ ...item, unit_price: 0, total_price: 0 }))
+      : items;
 
-    // Update bill
+    const total_amount = effectiveItems.reduce((sum, item) => sum + (item.total_price || 0), 0);
+    const net_amount = effectiveBillingType === 'Free_Scheme' ? 0 : total_amount - discount_amount;
+    const effectivePaymentStatus = effectiveBillingType === 'Free_Scheme' ? 'Paid' : payment_status;
+    const effectivePaidAmount = effectiveBillingType === 'Free_Scheme' ? 0 : paid_amount;
+    const effectivePaymentMethod = effectiveBillingType === 'Free_Scheme' ? 'Other' : payment_method;
+
+    // Update bill. priority/referring_*/clinical_notes/billing_type/
+    // scheme_name are only touched when the caller actually sends them
+    // (COALESCE), so a PUT that doesn't know about these fields yet can't
+    // accidentally wipe them.
     await connection.query(
-      'UPDATE bills SET total_amount = ?, discount_amount = ?, net_amount = ?, payment_method = ?, payment_status = ?, paid_amount = ?, notes = ? WHERE id = ?',
-      [total_amount, discount_amount, net_amount, payment_method, payment_status, paid_amount, notes || null, internal_bill_id]
+      `UPDATE bills SET total_amount = ?, discount_amount = ?, net_amount = ?, payment_method = ?, payment_status = ?, paid_amount = ?, notes = ?,
+         priority = COALESCE(?, priority),
+         referring_facility = COALESCE(?, referring_facility),
+         referring_clinician = COALESCE(?, referring_clinician),
+         clinical_notes = COALESCE(?, clinical_notes),
+         billing_type = COALESCE(?, billing_type),
+         scheme_name = CASE WHEN ? = 'Free_Scheme' THEN COALESCE(?, scheme_name) ELSE NULL END
+       WHERE id = ?`,
+      [total_amount, effectiveBillingType === 'Free_Scheme' ? 0 : discount_amount, net_amount,
+        effectivePaymentMethod, effectivePaymentStatus, effectivePaidAmount, notes || null,
+        priority || null, referring_facility || null, referring_clinician || null, clinical_notes || null,
+        billing_type || null, effectiveBillingType, scheme_name || null,
+        internal_bill_id]
     );
 
     // Delete existing items
@@ -708,7 +790,7 @@ export const updateBill = async (req, res) => {
     // Deduplicate lab tests
     const uniqueItems = [];
     const seenLabTests = new Set();
-    for (const item of items) {
+    for (const item of effectiveItems) {
       if (item.service_type === 'Laboratory') {
         if (seenLabTests.has(item.service_id)) continue;
         seenLabTests.add(item.service_id);

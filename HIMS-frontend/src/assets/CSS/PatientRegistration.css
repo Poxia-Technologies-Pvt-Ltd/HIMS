@@ -1184,6 +1184,84 @@
 .bil-status-completed { color: var(--bil-green); border-color: #6ee7b7; background: var(--bil-green-light); }
 .bil-status-waived    { color: var(--bil-text-soft); }
 
+/* ── Toggle Row (e.g. Free Diagnostic Scheme) ─────────────── */
+.bil-toggle-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bil-surface-2);
+  border: 1.5px solid var(--bil-border);
+  border-radius: var(--bil-radius-lg);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.bil-toggle-row:hover { border-color: var(--bil-border-2); }
+
+.bil-toggle-row.active {
+  background: var(--bil-green-light);
+  border-color: #a7d9c9;
+}
+
+.bil-toggle-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--bil-green);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.bil-toggle-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bil-text-mid);
+  cursor: pointer;
+}
+
+.bil-toggle-row.active .bil-toggle-label { color: var(--bil-green); }
+
+/* ── Inline banner (confirmation / info) ──────────────────── */
+.bil-banner {
+  grid-column: 1 / -1;
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: var(--bil-radius);
+  padding: 9px 12px;
+}
+
+.bil-banner-success {
+  color: var(--bil-green);
+  background: var(--bil-green-light);
+  border: 1px solid #a7d9c9;
+}
+
+/* ── Small status pills used on the Worklist ──────────────── */
+.bil-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 99px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.bil-pill-stat    { color: #b91c1c; background: var(--bil-red-light); }
+.bil-pill-urgent  { color: var(--bil-amber); background: var(--bil-amber-light); }
+.bil-pill-scheme  { color: var(--bil-green); background: var(--bil-green-light); }
+
+.bil-meta-line {
+  font-size: 11px;
+  color: var(--bil-text-xsoft);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .bil-divider { height: 1px; background: var(--bil-border); }
 
 .bil-summary-rows {

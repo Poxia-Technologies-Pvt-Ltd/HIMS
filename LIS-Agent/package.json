@@ -1,6 +1,6 @@
 {
   "name": "karnataka-lims",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Karnataka LIMS",
   "main": "main/main.js",
   "type": "commonjs",
@@ -17,6 +17,10 @@
     "productName": "Karnataka LIMS",
     "directories": {
       "output": "release"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://ka-lims.poxiatechnologies.com/download/"
     },
     "icon": "build/icon.png",
     "win": {

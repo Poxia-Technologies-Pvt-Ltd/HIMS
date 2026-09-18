@@ -43,9 +43,69 @@ export const upsertMachineModel = async (req, res) => {
     if (!manufacturer || !model) {
       return res.status(400).json({ success: false, message: 'Manufacturer and model are required.' });
     }
-    const validDiffTypes = ['3-Part', '5-Part', 'N/A'];
+    // Mirrors DEPARTMENT_DIFF_TYPES in HIMS-frontend/src/pages/Settings/
+    // MachineMaster.jsx — every diff_type value that UI can send, across all
+    // departments, flattened into one allowlist. 'N/A' is always valid as
+    // the unset default regardless of department.
+    const validDiffTypes = [
+      'N/A',
+      // Hematology Analyzers
+      '3-Part', '5-Part', '6-Part', '7-Part', '9-Part',
+      '5-Part with Reticulocyte', '5-Part with ESR',
+      'Automated Reticulocyte Analyzer', 'ESR Analyzer',
+      // Clinical Chemistry / Biochemistry Analyzers
+      'Semi-Automated Biochemistry Analyzer', 'Fully Automated Biochemistry Analyzer',
+      'Random Access Biochemistry Analyzer', 'Batch Biochemistry Analyzer',
+      'High Throughput Biochemistry Analyzer', 'Integrated Chemistry Analyzer',
+      // Electrolyte Analyzers
+      'Standalone ISE Analyzer', '3-Electrode ISE Analyzer', '5-Electrode ISE Analyzer',
+      'Electrolyte Analyzer with Blood Gas', 'Integrated ISE Analyzer',
+      // Immunoassay Analyzers
+      'ELISA Analyzer', 'CLIA Analyzer', 'ECLIA Analyzer', 'FIA Analyzer', 'FEIA Analyzer',
+      'Chemiluminescence Immunoassay Analyzer', 'Fully Automated Immunoassay Analyzer',
+      'Automated Immunoassay Analyzer',
+      // Urinalysis Analyzers
+      'Urine Strip Analyzer', 'Urine Chemistry Analyzer', 'Urine Sediment Analyzer',
+      'Automated Urine Sediment Analyzer', 'Digital Urine Microscopy Analyzer',
+      'Flow Cytometry Urine Analyzer', 'Integrated Urine Analyzer',
+      // Coagulation Analyzers
+      'Semi-Automated Coagulation Analyzer', 'Fully Automated Coagulation Analyzer',
+      'Random Access Coagulation Analyzer', 'High Throughput Coagulation Analyzer',
+      // Blood Gas Analyzers
+      'ABG Analyzer', 'VBG Analyzer', 'Blood Gas Analyzer',
+      'Blood Gas and Electrolyte Analyzer', 'Blood Gas and Metabolite Analyzer',
+      'Critical Care Analyzer',
+      // HbA1c Analyzers
+      'HPLC HbA1c Analyzer', 'Immunoassay HbA1c Analyzer', 'Boronate Affinity HbA1c Analyzer',
+      'Enzymatic HbA1c Analyzer', 'Point-of-Care HbA1c Analyzer',
+      // Microbiology Analyzers
+      'Automated Blood Culture Analyzer', 'Microbial Identification Analyzer',
+      'Antimicrobial Susceptibility Testing Analyzer', 'Automated Identification and AST Analyzer',
+      'MALDI-TOF Analyzer', 'Microbiology Automation System',
+      // Molecular Diagnostics Analyzers
+      'PCR Analyzer', 'Real-Time PCR Analyzer', 'qPCR Analyzer', 'Multiplex PCR Analyzer',
+      'Digital PCR Analyzer', 'Cartridge-Based Molecular Analyzer', 'Fully Automated Molecular Analyzer',
+      // Point-of-Care Testing Analyzers
+      'Blood Glucose Analyzer', 'POCT Blood Gas Analyzer', 'POCT HbA1c Analyzer',
+      'POCT Electrolyte Analyzer', 'POCT Cardiac Marker Analyzer', 'POCT CRP Analyzer',
+      'POCT Immunoassay Analyzer', 'POCT Coagulation Analyzer',
+      // Special Chemistry Analyzers
+      'Protein Analyzer', 'Nephelometer', 'Turbidimeter',
+      'Immunoturbidimetric Analyzer', 'Serum Protein Electrophoresis Analyzer',
+      // Pathology Analyzers
+      'Digital Slide Scanner', 'Digital Pathology Analyzer', 'Histopathology Analyzer',
+      'Cytology Analyzer', 'Automated Slide Stainer', 'Automated Tissue Processor',
+      // Cytology Analyzers
+      'Automated Cytology Analyzer', 'Liquid-Based Cytology Analyzer', 'Cervical Cytology Analyzer',
+      // Genetic / Molecular Analyzers
+      'DNA Analyzer', 'RNA Analyzer', 'Genetic Analyzer', 'DNA Sequencer',
+      'Next Generation Sequencing Analyzer',
+      // POC / Rapid Diagnostic Analyzers
+      'Lateral Flow Analyzer', 'Fluorescence Immunoassay Reader', 'Rapid Test Reader',
+      'Digital Rapid Test Analyzer',
+    ];
     if (diff_type && !validDiffTypes.includes(diff_type)) {
-      return res.status(400).json({ success: false, message: 'diff_type must be 3-Part, 5-Part, or N/A.' });
+      return res.status(400).json({ success: false, message: 'Invalid diff_type for this department.' });
     }
 
     await db.query(

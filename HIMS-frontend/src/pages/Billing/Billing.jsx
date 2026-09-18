@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import Alert from '../../components/Alert';
 import { useAlert } from '../../hooks/useAlert';
 import JsBarcode from 'jsbarcode';
+import { HeartHandshake } from 'lucide-react';
 import '../../assets/CSS/PatientRegistration.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -34,6 +35,23 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
   const [discount, setDiscount] = useState(0);
   const [method, setMethod] = useState('Cash');
   const [amountGiven, setAmountGiven] = useState('');
+
+  // Order-level fields (spec: "priority, referring facility/clinician and
+  // clinical notes") — stored on bills, not per test item, since they
+  // describe the requisition as a whole. See createBill/updateBill.
+  const [priority, setPriority] = useState('Routine');
+  const [referringFacility, setReferringFacility] = useState('');
+  const [referringClinician, setReferringClinician] = useState('');
+  const [clinicalNotes, setClinicalNotes] = useState('');
+
+  // Spec item #6: "billing optional for NFDS free-diagnostic workflows" —
+  // when on, charges are zeroed and payment is auto-settled (see
+  // createBill/updateBill's billing_type handling), so money is never a
+  // gate for a scheme patient. The bill row still gets created (that's how
+  // the order enters the lab worklist), it just never carries a real charge.
+  const [isFreeScheme, setIsFreeScheme] = useState(false);
+  const [schemeName, setSchemeName] = useState('');
+  const [schemes, setSchemes] = useState([]); // Settings > Billing Packages > Free Diagnostic Schemes
 
   const [invoice, setInvoice] = useState(null);
   // Sample IDs auto-generated for this invoice's lab items at billing time
@@ -174,16 +192,29 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
             department: pkg.department,
             items: Array.isArray(pkg.items) ? pkg.items : JSON.parse(pkg.items),
             discountPercent: parseFloat(pkg.discount_percent),
+            isFreeScheme: pkg.is_free_scheme === 1,
+            schemeName: pkg.scheme_name || '',
           })));
         }
       } catch (e) { console.error(e); }
     })();
   }, []);
 
+  // ── fetch scheme master list (Settings > Billing Packages) ──
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/free-schemes?is_active=true`, { headers: { Authorization: `Bearer ${tok()}` } });
+        const data = await res.json();
+        if (data.success) setSchemes(data.schemes || []);
+      } catch (e) { console.error(e); }
+    })();
+  }, []);
+
   // ── computed totals ──
-  const subtotal = items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
-  const discAmt = subtotal * (discount / 100);
-  const total = subtotal - discAmt;
+  const subtotal = isFreeScheme ? 0 : items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+  const discAmt = isFreeScheme ? 0 : subtotal * (discount / 100);
+  const total = isFreeScheme ? 0 : subtotal - discAmt;
 
   // ── handlers ──
   const handlePackageSelect = (pkgId) => {
@@ -199,12 +230,25 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
         quantity: 1,
       })));
       setDiscount(pkg.discountPercent);
-      showAlert(`Package "${pkg.name}" loaded`, 'success');
+      // A free-scheme package (e.g. NFDS, configured in Settings > Billing
+      // Packages) carries its scheme status with it — selecting it applies
+      // billing_type = Free_Scheme automatically instead of staff having to
+      // remember to toggle it and retype the scheme name every time.
+      // Selecting a non-scheme package after a scheme one turns it back off.
+      setIsFreeScheme(pkg.isFreeScheme);
+      setSchemeName(pkg.isFreeScheme ? pkg.schemeName : '');
+      showAlert(`Package "${pkg.name}" loaded${pkg.isFreeScheme ? ` — Free Scheme (${pkg.schemeName})` : ''}`, 'success');
     }
   };
 
   const handleAddItem = () => setItems(p => [...p, { id: Date.now(), name: '', amount: 0, service_type: 'Other', quantity: 1 }]);
-  const handleClearItems = () => { setItems([{ id: 1, name: '', amount: 0, service_type: 'Other', quantity: 1 }]); setDiscount(0); setSelectedPackage(''); };
+  const handleClearItems = () => {
+    setItems([{ id: 1, name: '', amount: 0, service_type: 'Other', quantity: 1 }]);
+    setDiscount(0);
+    setSelectedPackage('');
+    setIsFreeScheme(false);
+    setSchemeName('');
+  };
   const handleRemoveItem = (i) => {
     if (items.length === 1) { setItems([{ id: 1, name: '', amount: 0, service_type: 'Other', quantity: 1 }]); return; }
     setItems(p => p.filter((_, idx) => idx !== i));
@@ -227,6 +271,10 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
     }
     if (!resolvedPatientId) {
       showAlert('Could not resolve patient — please check the CRN No.', 'error');
+      return;
+    }
+    if (isFreeScheme && !schemeName.trim()) {
+      showAlert('Enter the scheme name (e.g. "NFDS") for a free-scheme order.', 'warning');
       return;
     }
 
@@ -277,7 +325,13 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
             paid_amount: effectivePaidAmount,
             notes: amountGiven ? `Amount Given: ₹${parseFloat(amountGiven).toFixed(2)}` : '',
             overwrite_duplicates: overwriteDuplicates,
-            user_id: userId
+            user_id: userId,
+            priority,
+            referring_facility: referringFacility || null,
+            referring_clinician: referringClinician || null,
+            clinical_notes: clinicalNotes || null,
+            billing_type: isFreeScheme ? 'Free_Scheme' : 'Standard',
+            scheme_name: isFreeScheme ? schemeName.trim() : null,
           }),
         });
       } else {
@@ -295,6 +349,12 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
             notes: amountGiven ? `Amount Given: ₹${parseFloat(amountGiven).toFixed(2)}` : '',
             overwrite_duplicates: overwriteDuplicates,
             user_id: userId,
+            priority,
+            referring_facility: referringFacility || null,
+            referring_clinician: referringClinician || null,
+            clinical_notes: clinicalNotes || null,
+            billing_type: isFreeScheme ? 'Free_Scheme' : 'Standard',
+            scheme_name: isFreeScheme ? schemeName.trim() : null,
             appointment_booking: bookingData?.appointment ? {
               doctor: bookingData.appointment.doctor,
               doctor_id: bookingData.appointment.doctor_id ?? null,
@@ -680,6 +740,89 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
               <div className="bil-card-head">
                 <div className="bil-card-title">
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                  </svg>
+                  Order Details
+                </div>
+              </div>
+              <div className="bil-card-body bil-payment-body">
+                <label htmlFor="free-scheme-toggle" className={`bil-toggle-row${isFreeScheme ? ' active' : ''}`}>
+                  <input
+                    type="checkbox"
+                    id="free-scheme-toggle"
+                    checked={isFreeScheme}
+                    onChange={e => setIsFreeScheme(e.target.checked)}
+                    disabled={isLocked}
+                  />
+                  <HeartHandshake size={15} style={{ flexShrink: 0, color: isFreeScheme ? 'var(--bil-green)' : 'var(--bil-text-soft)' }} />
+                  <span className="bil-toggle-label">Free Diagnostic Scheme (e.g. NFDS) — no charge, payment step skipped</span>
+                </label>
+                {isFreeScheme && (
+                  <div className="bil-pay-field">
+                    <label className="bil-pay-label">Scheme Name *</label>
+                    <select
+                      className="bil-pay-select"
+                      value={schemeName}
+                      onChange={e => setSchemeName(e.target.value)}
+                      disabled={isLocked}
+                    >
+                      <option value="">— Select scheme —</option>
+                      {schemes.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                    </select>
+                    {schemes.length === 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--bil-red)', marginTop: 4 }}>
+                        No schemes defined — add one in Settings → Billing Packages.
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="bil-pay-field">
+                  <label className="bil-pay-label">Priority</label>
+                  <select className="bil-pay-select" value={priority} onChange={e => setPriority(e.target.value)} disabled={isLocked}>
+                    {['Routine', 'Urgent', 'STAT'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div className="bil-pay-field">
+                  <label className="bil-pay-label">Referring Clinician</label>
+                  <input
+                    className="bil-pay-input"
+                    type="text"
+                    value={referringClinician}
+                    onChange={e => setReferringClinician(e.target.value)}
+                    disabled={isLocked}
+                    placeholder="e.g. Dr. Sharma"
+                  />
+                </div>
+                <div className="bil-pay-field">
+                  <label className="bil-pay-label">Referring Facility</label>
+                  <input
+                    className="bil-pay-input"
+                    type="text"
+                    value={referringFacility}
+                    onChange={e => setReferringFacility(e.target.value)}
+                    disabled={isLocked}
+                    placeholder="e.g. District Hospital, Bengaluru"
+                  />
+                </div>
+                <div className="bil-pay-field">
+                  <label className="bil-pay-label">Clinical Notes</label>
+                  <textarea
+                    className="bil-pay-input"
+                    rows={2}
+                    value={clinicalNotes}
+                    onChange={e => setClinicalNotes(e.target.value)}
+                    disabled={isLocked}
+                    placeholder="Relevant clinical history, symptoms, provisional diagnosis…"
+                    style={{ resize: 'vertical', fontFamily: 'inherit' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="bil-card bil-payment-card">
+              <div className="bil-card-head">
+                <div className="bil-card-title">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
                     <line x1="1" y1="10" x2="23" y2="10" />
                   </svg>
@@ -688,6 +831,12 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
               </div>
               <div className="bil-card-body bil-payment-body">
 
+                {isFreeScheme && (
+                  <div className="bil-banner bil-banner-success">
+                    Free-scheme order — charges are ₹0 and payment is auto-settled, no collection needed.
+                  </div>
+                )}
+
                 <div className="bil-pay-field">
                   <label className="bil-pay-label">Discount (%)</label>
                   <input
@@ -695,13 +844,13 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
                     type="number" min="0" max="100"
                     value={discount}
                     onChange={e => setDiscount(+e.target.value)}
-                    disabled={isLocked}
+                    disabled={isLocked || isFreeScheme}
                   />
                 </div>
 
                 <div className="bil-pay-field">
                   <label className="bil-pay-label">Payment Method</label>
-                  <select className="bil-pay-select" value={method} onChange={e => setMethod(e.target.value)} disabled={isLocked}>
+                  <select className="bil-pay-select" value={method} onChange={e => setMethod(e.target.value)} disabled={isLocked || isFreeScheme}>
                     {['Cash', 'Credit Card', 'Debit Card', 'Insurance', 'Mobile Money', 'UPI'].map(m =>
                       <option key={m}>{m}</option>
                     )}
@@ -713,13 +862,13 @@ function Billing({ regNo, patientId, bookingData, onFinish }) {
                   <input
                     type="number"
                     className="bil-pay-select"
-                    value={amountGiven}
+                    value={isFreeScheme ? '' : amountGiven}
                     onChange={e => setAmountGiven(e.target.value)}
-                    disabled={isLocked}
-                    placeholder="Enter amount..."
+                    disabled={isLocked || isFreeScheme}
+                    placeholder={isFreeScheme ? 'Not applicable' : 'Enter amount...'}
                     min="0"
                     step="1"
-                    style={{ background: '#fff', border: '1px solid #d1d5db', cursor: isLocked ? 'not-allowed' : 'text', paddingLeft: '8px' }}
+                    style={{ background: '#fff', border: '1px solid #d1d5db', cursor: (isLocked || isFreeScheme) ? 'not-allowed' : 'text', paddingLeft: '8px' }}
                   />
                 </div>
 

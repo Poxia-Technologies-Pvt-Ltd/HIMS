@@ -152,6 +152,164 @@
   transform: scale(0.98);
 }
 
+/* ── Free Diagnostic Schemes register ────────────────────────
+   Master list of scheme names (NFDS, Ayushman Bharat, ...) that a
+   package's Scheme Name is picked from. Presented as a formal register
+   (title bar + data table), matching the same card/table language used
+   for the packages list itself — not a chip cloud. */
+.schemes-section {
+  background: var(--bp-surface);
+  border: 1.5px solid var(--bp-line);
+  border-radius: var(--bp-radius-lg);
+  margin-bottom: 28px;
+  box-shadow: var(--bp-shadow-xs);
+  overflow: hidden;
+}
+
+.schemes-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 22px;
+  border-bottom: 1.5px solid var(--bp-line);
+  background: var(--bp-wash);
+}
+
+.schemes-section-head h3 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--bp-ink);
+  letter-spacing: -0.2px;
+}
+
+.schemes-section-head p {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--bp-ink-3);
+  font-weight: 400;
+  line-height: 1.5;
+  max-width: 560px;
+}
+
+.schemes-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.schemes-table thead th {
+  text-align: left;
+  padding: 10px 22px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--bp-ink-4);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 1.5px solid var(--bp-line);
+  background: var(--bp-wash);
+}
+
+.schemes-table tbody tr {
+  border-bottom: 1px solid var(--bp-line);
+  transition: background var(--bp-transition);
+}
+
+.schemes-table tbody tr:last-child { border-bottom: none; }
+.schemes-table tbody tr:hover { background: var(--bp-wash); }
+
+.schemes-table td {
+  padding: 12px 22px;
+  font-size: 13.5px;
+  color: var(--bp-ink-2);
+  vertical-align: middle;
+}
+
+.schemes-table .scheme-name-cell {
+  font-weight: 700;
+  color: var(--bp-ink);
+}
+
+.schemes-table .scheme-desc-cell {
+  color: var(--bp-ink-3);
+}
+
+.schemes-table .scheme-empty-row td {
+  text-align: center;
+  padding: 32px;
+  color: var(--bp-ink-4);
+  font-size: 13px;
+}
+
+/* Free-scheme badge on a package card */
+.package-scheme-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bp-green-pale);
+  color: var(--bp-green);
+  border: 1px solid rgba(5,150,105,0.22);
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 4px 11px;
+}
+
+.package-total-free {
+  font-family: var(--bp-font);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--bp-green);
+  letter-spacing: -0.3px;
+}
+
+/* Free-scheme toggle inside the package modal */
+.scheme-toggle-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--bp-wash);
+  border: 1.5px solid var(--bp-line);
+  border-radius: var(--bp-radius);
+  transition: all var(--bp-transition);
+}
+
+.scheme-toggle-box.active {
+  background: var(--bp-green-pale);
+  border-color: rgba(5,150,105,0.3);
+}
+
+.scheme-toggle-box .scheme-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.scheme-toggle-box label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--bp-ink-2);
+  cursor: pointer;
+}
+
+.scheme-toggle-box.active label { color: var(--bp-green); }
+
+.scheme-toggle-box .scheme-toggle-hint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--bp-ink-3);
+  line-height: 1.5;
+}
+
+.scheme-toggle-box .scheme-missing {
+  margin: 0;
+  font-size: 12px;
+  color: var(--bp-red);
+}
+
 /* ── Filters Bar ──────────────────────────────────────────── */
 .billing-filters {
   display: flex;

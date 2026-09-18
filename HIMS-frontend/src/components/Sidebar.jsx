@@ -106,6 +106,18 @@ const NAV_ITEMS = [
     )
   },
   {
+    id: 'patient-field-config',
+    label: 'Patient Field Config',
+    path: '/patient-field-config',
+    roles: ['Central', 'Sub-Central'],
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+        <path d="M18 8l2 2 3-3" />
+      </svg>
+    )
+  },
+  {
     id: 'device-keys',
     label: 'LIS-Agent Keys',
     path: '/device-keys',

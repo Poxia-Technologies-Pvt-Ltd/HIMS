@@ -2,7 +2,7 @@
 //
 // Lab machines are scattered across the state and nobody is going to visit 570
 // facilities to reinstall an .exe. electron-updater polls a static feed
-// (latest.yml on jh-lims.poxiatechnologies.com/download/, the same path the
+// (latest.yml on ka-lims.poxiatechnologies.com/download/, the same path the
 // manual installer is served from), downloads a newer build in the background
 // and installs it on quit.
 //

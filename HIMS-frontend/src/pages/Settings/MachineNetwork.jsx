@@ -193,8 +193,16 @@ export default function MachineNetwork() {
     { name:'Unknown', value: Number(stats.totals.unknown) || 0 },
   ].filter(d=>d.value>0) : [];
 
-  const maxBrand = Math.max(1, ...(stats?.brands||[]).map(b=>Number(b.total)));
-  const maxModel = Math.max(1, ...(stats?.models||[]).map(m=>Number(m.total)));
+  const maxBrand      = Math.max(1, ...(stats?.brands||[]).map(b=>Number(b.total)));
+  const maxModel      = Math.max(1, ...(stats?.models||[]).map(m=>Number(m.total)));
+  const maxDepartment = Math.max(1, ...(stats?.departments||[]).map(d=>Number(d.total)));
+
+  // Diff Type values are now department-scoped (Machine Master's
+  // DEPARTMENT_DIFF_TYPES) — derive the filter's options from what's
+  // actually configured rather than a hardcoded 3-Part/5-Part list.
+  const diffTypeOptions = useMemo(() =>
+    [...new Set((stats?.machines||[]).map(m=>m.diff_type||'N/A'))].sort()
+  , [stats]);
   const t = stats?.totals;
 
   const handleExportAll = () => {
@@ -411,6 +419,35 @@ export default function MachineNetwork() {
           </div>
         </div>
 
+        {/* Department (category) breakdown — from Machine Master's per-model
+            Department config, see getMachineStats' `departments` query. */}
+        <div style={{background:'#fff',borderRadius:14,border:'1px solid #e2e8f0',overflow:'hidden',marginBottom:20}}>
+          <div style={{padding:'14px 20px',borderBottom:'1px solid #f1f5f9',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <h3 style={{margin:0,fontSize:14,fontWeight:800}}>Department-wise Analyzer Count</h3>
+            <span style={{fontSize:12,color:'#94a3b8'}}>{(stats?.departments||[]).length} categories</span>
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse'}}>
+            <thead><tr style={{background:'#f8fafc'}}>
+              {['Department / Category','Count','Online','Offline'].map(h=><th key={h} style={{padding:'9px 16px',fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase',textAlign:'left',borderBottom:'1px solid #e2e8f0'}}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {(stats?.departments||[]).map((d,i)=>(
+                <tr key={i} style={{borderBottom:'1px solid #f8fafc'}}>
+                  <td style={{padding:'10px 16px',fontWeight:700,color: d.department==='Unconfigured' ? '#94a3b8' : '#1e293b',fontSize:13}}>
+                    {d.department==='Unconfigured' && '⚠️ '}{d.department}
+                  </td>
+                  <td style={{padding:'10px 16px'}}><MiniBar value={Number(d.total)} max={maxDepartment} color={BRAND_COLORS[i%BRAND_COLORS.length]}/></td>
+                  <td style={{padding:'10px 16px',color:'#16a34a',fontWeight:700,fontSize:13}}>{d.online}</td>
+                  <td style={{padding:'10px 16px',color:'#dc2626',fontWeight:700,fontSize:13}}>{d.offline}</td>
+                </tr>
+              ))}
+              {!(stats?.departments||[]).length && (
+                <tr><td colSpan={4} style={{padding:30,textAlign:'center',color:'#94a3b8'}}>No department data yet — configure models in Machine Master.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
         {/* Hospital / Lab-wise */}
         <div style={{background:'#fff',borderRadius:14,border:'1px solid #e2e8f0',overflow:'hidden'}}>
           <div style={{padding:'14px 20px',borderBottom:'1px solid #f1f5f9',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -460,9 +497,7 @@ export default function MachineNetwork() {
               <select value={machineFilter.diff_type} onChange={e=>setMachineFilter(f=>({...f,diff_type:e.target.value}))}
                 style={{padding:'6px 10px',borderRadius:6,border:'1px solid #cbd5e1',fontSize:12}}>
                 <option value="">All Diff Types</option>
-                <option value="3-Part">3-Part</option>
-                <option value="5-Part">5-Part</option>
-                <option value="N/A">N/A</option>
+                {diffTypeOptions.map(dt=><option key={dt} value={dt}>{dt}</option>)}
               </select>
               <select value={machineFilter.department} onChange={e=>setMachineFilter(f=>({...f,department:e.target.value}))}
                 style={{padding:'6px 10px',borderRadius:6,border:'1px solid #cbd5e1',fontSize:12}}>
@@ -545,9 +580,7 @@ export default function MachineNetwork() {
             <select value={machineFilter.diff_type} onChange={e=>setMachineFilter(f=>({...f,diff_type:e.target.value}))}
               style={{padding:'8px 12px',borderRadius:8,border:'1px solid #e2e8f0',fontWeight:600,fontSize:13}}>
               <option value="">All Diff Types</option>
-              <option value="3-Part">3-Part</option>
-              <option value="5-Part">5-Part</option>
-              <option value="N/A">N/A</option>
+              {diffTypeOptions.map(dt=><option key={dt} value={dt}>{dt}</option>)}
             </select>
             <select value={machineFilter.department} onChange={e=>setMachineFilter(f=>({...f,department:e.target.value}))}
               style={{padding:'8px 12px',borderRadius:8,border:'1px solid #e2e8f0',fontWeight:600,fontSize:13}}>

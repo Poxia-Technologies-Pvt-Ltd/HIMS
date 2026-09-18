@@ -52,6 +52,7 @@ import CdacMapping from './pages/Settings/CdacMapping';
 import ParameterCodeNames from './pages/Settings/ParameterCodeNames';
 import DeviceKeys from './pages/Settings/DeviceKeys';
 import MachineMaster from './pages/Settings/MachineMaster';
+import PatientFieldConfig from './pages/Settings/PatientFieldConfig';
 import ChangePassword from './pages/ChangePassword';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -202,6 +203,7 @@ function App() {
           <Route path="/parameter-code-names" element={<ParameterCodeNames />} />
           <Route path="/device-keys" element={<DeviceKeys />} />
           <Route path="/machine-master" element={<MachineMaster />} />
+          <Route path="/patient-field-config" element={<PatientFieldConfig />} />
         </Route>
         </Route> {/* end RequireNonDoctorArea */}
         </Route> {/* end RequireLabAccess */}

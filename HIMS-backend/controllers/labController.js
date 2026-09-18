@@ -1026,6 +1026,12 @@ export const getWorklist = async (req, res) => {
         bi.lab_barcode,
         i.name as lab_name,
         b.created_at as bill_date,
+        b.priority,
+        b.referring_facility,
+        b.referring_clinician,
+        b.clinical_notes,
+        b.billing_type,
+        b.scheme_name,
         tr.id as result_id,
         tr.results_json,
         tr.tested_at as result_tested_at,
@@ -1072,7 +1078,10 @@ export const getWorklist = async (req, res) => {
     // Deduplicate any accidental double-billing of the exact same test on the same bill
     query += ` GROUP BY bi.bill_id, bi.service_id, bi.id, b.id, p.id, lt.id, lc.name, tr.id`;
 
-    query += ` ORDER BY b.created_at ASC`;
+    // STAT/Urgent orders surface first regardless of when they were billed —
+    // that's the whole point of a priority field on a lab worklist; within
+    // the same priority, oldest-first (FIFO) as before.
+    query += ` ORDER BY FIELD(b.priority, 'STAT', 'Urgent', 'Routine'), b.created_at ASC`;
 
     const [worklist] = await db.query(query, params);
 

@@ -218,14 +218,14 @@ async function processAltaHL7(message, machine) {
     return ingestParsedHL7(parsed, machine);
 }
 
-// AGAPE CXL PRO — same MSH/PID/OBR/OBX + MLLP framing as ALTA/ADX (HL7
-// v2.3.1, verified against the vendor's "LIS Network Interface Instruction"
-// and the standalone agape_cxl_pro.py test listener built from it), but
-// OBX-3 (Observation Identifier) carries the test NAME directly (e.g.
-// "GLU^1"), not a numeric code — so unlike parseAltaHL7 there is no
-// parameter_map lookup, just the same "split on ^, take [0]" the test
-// listener used once it was confirmed working against the real analyzer.
-function parseAgapeHL7(message) {
+// NAME-BASED OBX MACHINES (Agape CXL Pro, DIRUI CS-T240) — same MSH/PID/OBR/
+// OBX + MLLP framing as ALTA/ADX (HL7 v2.3.1), but OBX-3 (Observation
+// Identifier) carries the test NAME directly (e.g. "GLU^1"), not a numeric
+// code — so unlike parseAltaHL7 there is no parameter_map lookup, just
+// "split on ^, take [0]". Verified against Agape's vendor "LIS Network
+// Interface Instruction" and the standalone agape_cxl_pro.py test listener
+// built from it; DIRUI CS-T240 uses the identical method.
+function parseNameBasedHL7(message) {
     const lines = message.split('\r');
     const patient = {};
     const results = {};
@@ -266,8 +266,8 @@ function parseAgapeHL7(message) {
     return { patient, results };
 }
 
-async function processAgapeHL7(message, machine) {
-    const parsed = parseAgapeHL7(message);
+async function processNameBasedHL7(message, machine) {
+    const parsed = parseNameBasedHL7(message);
     return ingestParsedHL7(parsed, machine);
 }
 
@@ -640,9 +640,9 @@ async function startTCPServer(machine, win) {
                 console.log(message);
 
                 const modelUpper = (machine.model || '').toUpperCase();
-                const isAgapeCxl = modelUpper.includes('CXL');
-                if (isAgapeCxl) {
-                    await processAgapeHL7(message, machine);
+                const isNameBasedObx = modelUpper.includes('CXL') || modelUpper.includes('CS-T240');
+                if (isNameBasedObx) {
+                    await processNameBasedHL7(message, machine);
                 } else {
                     await processAltaHL7(message, machine);
                 }
@@ -728,7 +728,8 @@ async function initializeAllServers(win) {
                 c.model.includes('AUTOCHEM') ||
                 c.model.toUpperCase().includes('MINDRAY') ||
                 c.model.includes('BC-5130') ||
-                c.model.toUpperCase().includes('CXL')
+                c.model.toUpperCase().includes('CXL') ||
+                c.model.toUpperCase().includes('CS-T240')
             ))
         );
 

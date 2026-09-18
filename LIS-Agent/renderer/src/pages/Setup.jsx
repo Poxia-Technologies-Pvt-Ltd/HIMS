@@ -43,6 +43,7 @@ export default function Setup() {
         'Erba Mannheim': ['LAURA Smart'],
         'Athenese Dx': ['ALTA Hematology', 'ADX-AUTOCHEM-200'],
         'Mindray': ['BC-5130'],
+        'DIRUI': ['CS-T240'],
         'SENSA CORE': ['ST-200CL'],
         'NIHON KOHDEN': ['CelltacEs']
     };

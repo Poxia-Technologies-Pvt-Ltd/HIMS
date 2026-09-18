@@ -7,12 +7,84 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 const tok = () => localStorage.getItem('hims_token');
 const authHdr = () => ({ Authorization: `Bearer ${tok()}` });
 
-const DIFF_TYPES = ['N/A', '3-Part', '5-Part'];
-const DEPARTMENTS = [
-  'Hematology', 'Biochemistry', 'Microbiology', 'Serology',
-  'Histopathology', 'Immunology', 'Endocrinology', 'Toxicology',
-  'Critical Care', 'Clinical Pathology',
-];
+// Diff Type options are scoped to the selected Department — a Hematology
+// Analyzer's diff type means "3-Part/5-Part/...", while a Biochemistry
+// Analyzer's means "Semi-Automated/Fully Automated/...". 'N/A' is always
+// offered as the unset default regardless of department.
+const DEPARTMENT_DIFF_TYPES = {
+  'Hematology Analyzers': [
+    '3-Part', '5-Part', '6-Part', '7-Part', '9-Part',
+    '5-Part with Reticulocyte', '5-Part with ESR',
+    'Automated Reticulocyte Analyzer', 'ESR Analyzer',
+  ],
+  'Clinical Chemistry / Biochemistry Analyzers': [
+    'Semi-Automated Biochemistry Analyzer', 'Fully Automated Biochemistry Analyzer',
+    'Random Access Biochemistry Analyzer', 'Batch Biochemistry Analyzer',
+    'High Throughput Biochemistry Analyzer', 'Integrated Chemistry Analyzer',
+  ],
+  'Electrolyte Analyzers': [
+    'Standalone ISE Analyzer', '3-Electrode ISE Analyzer', '5-Electrode ISE Analyzer',
+    'Electrolyte Analyzer with Blood Gas', 'Integrated ISE Analyzer',
+  ],
+  'Immunoassay Analyzers': [
+    'ELISA Analyzer', 'CLIA Analyzer', 'ECLIA Analyzer', 'FIA Analyzer', 'FEIA Analyzer',
+    'Chemiluminescence Immunoassay Analyzer', 'Fully Automated Immunoassay Analyzer',
+    'Automated Immunoassay Analyzer',
+  ],
+  'Urinalysis Analyzers': [
+    'Urine Strip Analyzer', 'Urine Chemistry Analyzer', 'Urine Sediment Analyzer',
+    'Automated Urine Sediment Analyzer', 'Digital Urine Microscopy Analyzer',
+    'Flow Cytometry Urine Analyzer', 'Integrated Urine Analyzer',
+  ],
+  'Coagulation Analyzers': [
+    'Semi-Automated Coagulation Analyzer', 'Fully Automated Coagulation Analyzer',
+    'Random Access Coagulation Analyzer', 'High Throughput Coagulation Analyzer',
+  ],
+  'Blood Gas Analyzers': [
+    'ABG Analyzer', 'VBG Analyzer', 'Blood Gas Analyzer',
+    'Blood Gas and Electrolyte Analyzer', 'Blood Gas and Metabolite Analyzer',
+    'Critical Care Analyzer',
+  ],
+  'HbA1c Analyzers': [
+    'HPLC HbA1c Analyzer', 'Immunoassay HbA1c Analyzer', 'Boronate Affinity HbA1c Analyzer',
+    'Enzymatic HbA1c Analyzer', 'Point-of-Care HbA1c Analyzer',
+  ],
+  'Microbiology Analyzers': [
+    'Automated Blood Culture Analyzer', 'Microbial Identification Analyzer',
+    'Antimicrobial Susceptibility Testing Analyzer', 'Automated Identification and AST Analyzer',
+    'MALDI-TOF Analyzer', 'Microbiology Automation System',
+  ],
+  'Molecular Diagnostics Analyzers': [
+    'PCR Analyzer', 'Real-Time PCR Analyzer', 'qPCR Analyzer', 'Multiplex PCR Analyzer',
+    'Digital PCR Analyzer', 'Cartridge-Based Molecular Analyzer', 'Fully Automated Molecular Analyzer',
+  ],
+  'Point-of-Care Testing Analyzers': [
+    'Blood Glucose Analyzer', 'POCT Blood Gas Analyzer', 'POCT HbA1c Analyzer',
+    'POCT Electrolyte Analyzer', 'POCT Cardiac Marker Analyzer', 'POCT CRP Analyzer',
+    'POCT Immunoassay Analyzer', 'POCT Coagulation Analyzer',
+  ],
+  'Special Chemistry Analyzers': [
+    'Protein Analyzer', 'Nephelometer', 'Turbidimeter',
+    'Immunoturbidimetric Analyzer', 'Serum Protein Electrophoresis Analyzer',
+  ],
+  'Pathology Analyzers': [
+    'Digital Slide Scanner', 'Digital Pathology Analyzer', 'Histopathology Analyzer',
+    'Cytology Analyzer', 'Automated Slide Stainer', 'Automated Tissue Processor',
+  ],
+  'Cytology Analyzers': [
+    'Automated Cytology Analyzer', 'Liquid-Based Cytology Analyzer', 'Cervical Cytology Analyzer',
+  ],
+  'Genetic / Molecular Analyzers': [
+    'DNA Analyzer', 'RNA Analyzer', 'Genetic Analyzer', 'DNA Sequencer',
+    'Next Generation Sequencing Analyzer',
+  ],
+  'POC / Rapid Diagnostic Analyzers': [
+    'Lateral Flow Analyzer', 'Fluorescence Immunoassay Reader', 'Rapid Test Reader',
+    'Digital Rapid Test Analyzer',
+  ],
+};
+const DEPARTMENTS = Object.keys(DEPARTMENT_DIFF_TYPES);
+const diffTypeOptionsFor = (department) => ['N/A', ...(DEPARTMENT_DIFF_TYPES[department] || [])];
 
 const selectStyle = { padding: '7px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 13, width: '100%', boxSizing: 'border-box', fontWeight: 600, color: '#334155', background: '#fff' };
 
@@ -57,7 +129,15 @@ export default function MachineMaster() {
   const rowKey = (r) => `${r.manufacturer}::${r.model}`;
 
   const updateRow = (key, field, value) => {
-    setRows((prev) => prev.map((r) => (rowKey(r) === key ? { ...r, [field]: value } : r)));
+    setRows((prev) => prev.map((r) => {
+      if (rowKey(r) !== key) return r;
+      // Diff Type options depend on Department — changing department resets
+      // diff_type unless the current value is still valid under the new one.
+      if (field === 'department' && !diffTypeOptionsFor(value).includes(r.diff_type)) {
+        return { ...r, department: value, diff_type: 'N/A' };
+      }
+      return { ...r, [field]: value };
+    }));
   };
 
   const saveRow = async (row) => {
@@ -161,7 +241,7 @@ export default function MachineMaster() {
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                {['Manufacturer', 'Model', 'Machines', 'Diff Type', 'Department', ''].map((h) => (
+                {['Manufacturer', 'Model', 'Machines', 'Department', 'Diff Type', ''].map((h) => (
                   <th key={h} style={{ padding: '10px 14px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', textAlign: 'left', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -177,15 +257,21 @@ export default function MachineMaster() {
                     <td style={{ padding: '11px 14px', fontSize: 13, color: '#475569' }}>{row.manufacturer || 'Unknown'}</td>
                     <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 800, color: '#1e40af' }}>{row.model}</td>
                     <td style={{ padding: '11px 14px', fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{row.machine_count}</td>
-                    <td style={{ padding: '11px 14px', width: 150 }}>
-                      <select value={row.diff_type} onChange={(e) => updateRow(key, 'diff_type', e.target.value)} style={selectStyle}>
-                        {DIFF_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </td>
-                    <td style={{ padding: '11px 14px', width: 190 }}>
+                    <td style={{ padding: '11px 14px', width: 260 }}>
                       <select value={row.department} onChange={(e) => updateRow(key, 'department', e.target.value)} style={selectStyle}>
                         <option value="">— Select —</option>
                         {DEPARTMENTS.map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                    </td>
+                    <td style={{ padding: '11px 14px', width: 230 }}>
+                      <select
+                        value={row.diff_type}
+                        onChange={(e) => updateRow(key, 'diff_type', e.target.value)}
+                        disabled={!row.department}
+                        style={selectStyle}
+                        title={!row.department ? 'Select a Department first' : undefined}
+                      >
+                        {diffTypeOptionsFor(row.department).map((t) => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </td>
                     <td style={{ padding: '11px 14px', width: 100 }}>

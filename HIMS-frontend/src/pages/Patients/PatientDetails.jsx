@@ -30,7 +30,7 @@ const INIT = {
   consultantName: '',
   title: '', firstName: '', middleName: '', lastName: '',
   dob: '', ageYears: '', ageMonths: '', ageDays: '',
-  gender: '', aadharNumber: '', maritalStatus: '', occupation: '', language: '',
+  gender: '', aadharNumber: '', abhaId: '', maritalStatus: '', occupation: '', language: '',
   educationLevel: '', religion: '', citizen: '', emailId: '', telephone: '', fileRequired: false,
   address: '', suburb: '', city: '', country: '', postalCode: '', postalAddress: false,
   kinSameAddress: false, kinName: '', kinRelation: '', kinTelephone: '',
@@ -158,10 +158,12 @@ function MergeModal({ defaultSecondary, onClose, onMerged }) {
 
 function PatientDetails({ onSaveSuccess }) {
   const { alert, showAlert, hideAlert } = useAlert();
-  const [data, setData] = useState(() => ({
-    ...INIT,
-    regNo: 'REG-' + Math.floor(10000 + Math.random() * 90000)
-  }));
+  // regNo is no longer generated here — it used to be a client-side random
+  // number ('REG-' + Math.random()) with no real collision protection, just
+  // a generic error if two happened to land on the same value. The backend
+  // now reserves the next number in an atomic per-branch-per-year sequence
+  // (see reserveRegNo in patientController.js) and returns it on save.
+  const [data, setData] = useState(() => ({ ...INIT }));
   // Most walk-ins know their age, not their exact birth date — Age entry is
   // the default; DOB entry is there for whoever does have the real date.
   const [dobEntryMode, setDobEntryMode] = useState('age'); // 'age' | 'dob'
@@ -191,6 +193,61 @@ function PatientDetails({ onSaveSuccess }) {
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [proceedAnyway, setProceedAnyway] = useState(false);
   const [showMergeModal, setShowMergeModal] = useState(false);
+
+  // Admin-configurable fields (Settings > Patient Field Config). Fields
+  // already hand-built into this form (name, dob/age, gender, phone,
+  // patient type, consultant, address, kin, payer) stay as-is — rewriting a
+  // working, polished layout for per-field show/hide isn't worth the risk.
+  // What's genuinely dynamic here: (a) system fields that have a DB column
+  // and validation but previously had NO input anywhere on this form
+  // (aadharNumber, abhaId, maritalStatus, occupation, language,
+  // educationLevel, religion, citizen — silently uncollectable before this),
+  // and (b) true custom fields an Admin defines with no code change at all.
+  // Both render generically in the "Additional Information" section below.
+  const DYNAMIC_SYSTEM_KEYS = ['aadharNumber', 'abhaId', 'maritalStatus', 'occupation', 'language', 'educationLevel', 'religion', 'citizen'];
+  const [fieldConfig, setFieldConfig] = useState([]);
+  const [customFields, setCustomFields] = useState({});
+
+  useEffect(() => {
+    const API_BASE = import.meta.env.VITE_API_URL || '';
+    fetch(`${API_BASE}/api/patients/field-config`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('hims_token')}` }
+    })
+      .then(r => r.json())
+      .then(json => { if (json.success) setFieldConfig(json.fields || []); })
+      .catch(() => { /* form still works with defaults if this fails */ });
+  }, []);
+
+  const dynamicSystemFields = fieldConfig.filter(f => f.is_enabled && DYNAMIC_SYSTEM_KEYS.includes(f.field_key));
+  const customFieldDefs    = fieldConfig.filter(f => f.is_enabled && f.field_source === 'custom');
+
+  // setValue receives the raw new value (string/boolean) — callers close
+  // over either setData (dynamic system fields, keyed into the same `data`
+  // state as every hand-built field) or setCustomFields (true custom
+  // fields, which have no slot in `data` since their keys are admin-defined
+  // at runtime).
+  const renderConfigField = (f, value, setValue) => {
+    const label = f.label + (f.is_required ? ' *' : '');
+    if (f.field_type === 'select') {
+      const opts = Array.isArray(f.options_json) ? f.options_json : [];
+      return <Field key={f.field_key} label={label}><Select options={opts} value={value || ''} onChange={e => setValue(e.target.value)} /></Field>;
+    }
+    if (f.field_type === 'textarea') {
+      return <Field key={f.field_key} label={label}><textarea className="preg-input" rows={2} value={value || ''} onChange={e => setValue(e.target.value)} /></Field>;
+    }
+    if (f.field_type === 'checkbox') {
+      return <Field key={f.field_key} label={label}><input type="checkbox" checked={!!value} onChange={e => setValue(e.target.checked)} /></Field>;
+    }
+    return (
+      <Field key={f.field_key} label={label}>
+        <Input
+          type={f.field_type === 'number' ? 'number' : f.field_type === 'date' ? 'date' : 'text'}
+          value={value || ''}
+          onChange={e => setValue(e.target.value)}
+        />
+      </Field>
+    );
+  };
 
   // Close dropdown if clicked outside
   useEffect(() => {
@@ -369,6 +426,16 @@ function PatientDetails({ onSaveSuccess }) {
       return;
     }
 
+    const missingDynamic = [...dynamicSystemFields, ...customFieldDefs].filter(f => {
+      if (!f.is_required) return false;
+      const v = f.field_source === 'custom' ? customFields[f.field_key] : data[f.field_key];
+      return v === undefined || v === null || String(v).trim() === '';
+    });
+    if (missingDynamic.length > 0) {
+      showAlert(`Required: ${missingDynamic.map(f => f.label).join(', ')}`, 'warning');
+      return;
+    }
+
     // Final duplicate check before save
     if (!proceedAnyway && duplicates.length > 0) {
       setShowDuplicates(true);
@@ -381,6 +448,7 @@ function PatientDetails({ onSaveSuccess }) {
         ...data,
         photo_base64: photo,
         branch_id: localStorage.getItem('branch_id'),
+        customFields,
       };
 
       const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -395,7 +463,8 @@ function PatientDetails({ onSaveSuccess }) {
       const result = await res.json();
 
       if (result.success) {
-        onSaveSuccess(data.regNo);
+        setData(d => ({ ...d, regNo: result.regNo }));
+        onSaveSuccess(result.regNo);
       } else {
         showAlert(result.message || 'Error saving patient.', 'error');
       }
@@ -461,7 +530,9 @@ function PatientDetails({ onSaveSuccess }) {
             <div className="preg-meta-strip">
               <div className="preg-meta-item">
                 <span className="preg-meta-label">Reg. No.</span>
-                <span className="preg-meta-value">{data.regNo}</span>
+                <span className="preg-meta-value" style={!data.regNo ? { color: '#94a3b8', fontStyle: 'italic' } : undefined}>
+                  {data.regNo || 'Auto-generated on save'}
+                </span>
               </div>
               <div className="preg-meta-item">
                 <span className="preg-meta-label">Date</span>
@@ -715,6 +786,28 @@ function PatientDetails({ onSaveSuccess }) {
             </div>
           </div>
         </div>
+
+        {/* ── Additional Information — Settings > Patient Field Config ──
+            Admin-configurable: aadhar/ABHA/marital status/etc. (real DB
+            columns that had no input anywhere on this form before) plus any
+            fully custom field an Admin defines, with no code change. */}
+        {(dynamicSystemFields.length > 0 || customFieldDefs.length > 0) && (
+          <div className="preg-card">
+            <div className="preg-card-header">
+              <span className="preg-card-title">Additional Information</span>
+            </div>
+            <div className="preg-card-body">
+              <div className="preg-grid preg-grid-3">
+                {dynamicSystemFields.map(f =>
+                  renderConfigField(f, data[f.field_key], (v) => setData(p => ({ ...p, [f.field_key]: v })))
+                )}
+                {customFieldDefs.map(f =>
+                  renderConfigField(f, customFields[f.field_key], (v) => setCustomFields(p => ({ ...p, [f.field_key]: v })))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
 

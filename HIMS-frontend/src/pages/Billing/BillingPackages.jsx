@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { HeartHandshake } from 'lucide-react';
 import Alert from '../../components/Alert';
 import { useAlert } from '../../hooks/useAlert';
 import '../../assets/CSS/PatientRegistration.css';
@@ -31,13 +32,24 @@ function BillingPackages() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDept, setFilterDept] = useState('All');
 
+  // Master list of free-diagnostic scheme names (NFDS, Ayushman Bharat, ...)
+  // — a package picks one from here instead of staff retyping the scheme
+  // name every time a package is created. See free_schemes table.
+  const [schemes, setSchemes] = useState([]);
+  const [showSchemeModal, setShowSchemeModal] = useState(false);
+  const [newSchemeName, setNewSchemeName] = useState('');
+  const [newSchemeDescription, setNewSchemeDescription] = useState('');
+  const [savingScheme, setSavingScheme] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     department: '',
     description: '',
     items: [{ name: '', amount: 0 }],
     discountPercent: 0,
-    isActive: true
+    isActive: true,
+    isFreeScheme: false,
+    schemeName: '',
   });
 
   const fetchDepartments = async () => {
@@ -66,6 +78,8 @@ function BillingPackages() {
           items: Array.isArray(pkg.items) ? pkg.items : JSON.parse(pkg.items),
           discountPercent: parseFloat(pkg.discount_percent),
           isActive: pkg.is_active === 1,
+          isFreeScheme: pkg.is_free_scheme === 1,
+          schemeName: pkg.scheme_name || '',
           createdAt: pkg.created_at,
           updatedAt: pkg.updated_at
         }));
@@ -77,9 +91,67 @@ function BillingPackages() {
     }
   };
 
+  const fetchSchemes = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/free-schemes?is_active=true`, { headers: { Authorization: `Bearer ${tok()}` } });
+      const data = await res.json();
+      if (data.success) setSchemes(data.schemes || []);
+    } catch (error) {
+      console.error('Error fetching free schemes:', error);
+    }
+  };
+
+  const handleAddScheme = async () => {
+    if (!newSchemeName.trim()) {
+      showAlert('Enter a scheme name', 'warning');
+      return;
+    }
+    setSavingScheme(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/free-schemes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok()}` },
+        body: JSON.stringify({ name: newSchemeName.trim(), description: newSchemeDescription.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showAlert(`Scheme "${newSchemeName.trim()}" added.`, 'success');
+        setNewSchemeName('');
+        setNewSchemeDescription('');
+        setShowSchemeModal(false);
+        fetchSchemes();
+      } else {
+        showAlert(data.message || 'Could not add scheme.', 'error');
+      }
+    } catch (error) {
+      console.error('Error adding scheme:', error);
+      showAlert('Network error adding scheme.', 'error');
+    } finally {
+      setSavingScheme(false);
+    }
+  };
+
+  const handleRemoveScheme = async (scheme) => {
+    if (!window.confirm(`Remove "${scheme.name}" from the scheme list? Packages already using it keep working, it just won't be offered for new ones.`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/free-schemes/${scheme.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${tok()}` } });
+      const data = await res.json();
+      if (data.success) {
+        showAlert(`Removed "${scheme.name}".`, 'success');
+        fetchSchemes();
+      } else {
+        showAlert(data.message || 'Could not remove scheme.', 'error');
+      }
+    } catch (error) {
+      console.error('Error removing scheme:', error);
+      showAlert('Network error removing scheme.', 'error');
+    }
+  };
+
   useEffect(() => {
     fetchDepartments();
     fetchPackages();
+    fetchSchemes();
   }, []);
 
   const handleOpenAdd = () => {
@@ -90,7 +162,9 @@ function BillingPackages() {
       description: '',
       items: [{ name: '', amount: 0 }],
       discountPercent: 0,
-      isActive: true
+      isActive: true,
+      isFreeScheme: false,
+      schemeName: '',
     });
     setShowModal(true);
   };
@@ -103,7 +177,9 @@ function BillingPackages() {
       description: pkg.description,
       items: [...pkg.items],
       discountPercent: pkg.discountPercent,
-      isActive: pkg.isActive
+      isActive: pkg.isActive,
+      isFreeScheme: pkg.isFreeScheme || false,
+      schemeName: pkg.schemeName || '',
     });
     setShowModal(true);
   };
@@ -170,6 +246,10 @@ function BillingPackages() {
       showAlert('At least one item is required', 'warning');
       return;
     }
+    if (formData.isFreeScheme && !formData.schemeName.trim()) {
+      showAlert('Enter the scheme name (e.g. "NFDS") for a free-scheme package', 'warning');
+      return;
+    }
 
     const validItems = formData.items.filter(i => i.name.trim());
 
@@ -179,7 +259,9 @@ function BillingPackages() {
       description: formData.description,
       items: validItems,
       discount_percent: formData.discountPercent,
-      is_active: formData.isActive
+      is_active: formData.isActive,
+      is_free_scheme: formData.isFreeScheme,
+      scheme_name: formData.isFreeScheme ? formData.schemeName.trim() : null,
     };
 
     try {
@@ -259,6 +341,91 @@ function BillingPackages() {
           </button>
         </div>
 
+        {/* ── Free Diagnostic Schemes (e.g. NFDS) ──
+            Managed here so a package's Scheme Name is picked from this list
+            instead of retyped by hand every time. */}
+        <div className="schemes-section">
+          <div className="schemes-section-head">
+            <div>
+              <h3>Free Diagnostic Schemes</h3>
+              <p>Government or institutional schemes under which a package can be billed at no charge (e.g. NFDS, Ayushman Bharat).</p>
+            </div>
+            <button type="button" className="btn-primary" onClick={() => setShowSchemeModal(true)}>
+              <HeartHandshake size={15} />
+              Add Scheme
+            </button>
+          </div>
+          <table className="schemes-table">
+            <thead>
+              <tr>
+                <th style={{ width: '28%' }}>Scheme Name</th>
+                <th>Description</th>
+                <th style={{ width: 110 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {schemes.map(s => (
+                <tr key={s.id}>
+                  <td className="scheme-name-cell">{s.name}</td>
+                  <td className="scheme-desc-cell">{s.description || '—'}</td>
+                  <td>
+                    <button className="btn-ghost" onClick={() => handleRemoveScheme(s)} style={{ color: 'var(--bp-red)' }}>
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {schemes.length === 0 && (
+                <tr className="scheme-empty-row">
+                  <td colSpan={3}>No schemes registered yet. Click "Add Scheme" to create one.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── Add Scheme Modal ── */}
+        {showSchemeModal && (
+          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowSchemeModal(false)}>
+            <div className="modal-container" style={{ maxWidth: 480 }}>
+              <div className="modal-header">
+                <h3>Add Free Diagnostic Scheme</h3>
+                <button className="modal-close" onClick={() => setShowSchemeModal(false)}>×</button>
+              </div>
+              <div className="modal-body">
+                <div style={{ display: 'grid', gap: 16 }}>
+                  <div className="preg-field">
+                    <label className="preg-label">Scheme Name *</label>
+                    <input
+                      className="preg-input"
+                      value={newSchemeName}
+                      onChange={e => setNewSchemeName(e.target.value)}
+                      placeholder="e.g. NFDS"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="preg-field">
+                    <label className="preg-label">Description</label>
+                    <textarea
+                      className="preg-textarea"
+                      value={newSchemeDescription}
+                      onChange={e => setNewSchemeDescription(e.target.value)}
+                      placeholder="e.g. National Free Diagnostic Services — no-cost diagnostics for eligible patients"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-ghost" onClick={() => setShowSchemeModal(false)}>Cancel</button>
+                <button type="button" className="btn-primary" onClick={handleAddScheme} disabled={savingScheme}>
+                  {savingScheme ? 'Saving…' : 'Save Scheme'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Filters ── */}
         <div className="billing-filters">
           <input
@@ -309,7 +476,15 @@ function BillingPackages() {
 
                 {/* Body */}
                 <div className="package-card-body">
-                  <div className="package-department-badge">{pkg.department}</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <div className="package-department-badge">{pkg.department}</div>
+                    {pkg.isFreeScheme && (
+                      <span className="package-scheme-badge">
+                        <HeartHandshake size={11} />
+                        {pkg.schemeName || 'Free Scheme'}
+                      </span>
+                    )}
+                  </div>
 
                   {pkg.description && (
                     <p className="package-description">{pkg.description}</p>
@@ -336,14 +511,20 @@ function BillingPackages() {
                 {/* Footer — OUTSIDE body so it never overlaps */}
                 <div className="package-footer">
                   <div className="package-price-section">
-                    {pkg.discountPercent > 0 && (
-                      <div className="package-discount-text">
-                        {pkg.discountPercent}% discount applied
-                      </div>
-                    )}
-                    <div className="package-total">₹{total.toFixed(2)}</div>
-                    {pkg.discountPercent > 0 && (
-                      <div className="package-original-price">₹{subtotal.toFixed(2)}</div>
+                    {pkg.isFreeScheme ? (
+                      <div className="package-total-free">Free of Charge</div>
+                    ) : (
+                      <>
+                        {pkg.discountPercent > 0 && (
+                          <div className="package-discount-text">
+                            {pkg.discountPercent}% discount applied
+                          </div>
+                        )}
+                        <div className="package-total">₹{total.toFixed(2)}</div>
+                        {pkg.discountPercent > 0 && (
+                          <div className="package-original-price">₹{subtotal.toFixed(2)}</div>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -503,6 +684,40 @@ function BillingPackages() {
                     <label htmlFor="isActive" style={{ cursor: 'pointer', fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>
                       Active Package
                     </label>
+                  </div>
+
+                  <div className={`scheme-toggle-box${formData.isFreeScheme ? ' active' : ''}`}>
+                    <div className="scheme-toggle-row" onClick={() => setFormData(prev => ({ ...prev, isFreeScheme: !prev.isFreeScheme }))}>
+                      <input
+                        type="checkbox"
+                        id="isFreeScheme"
+                        checked={formData.isFreeScheme}
+                        onChange={e => setFormData(prev => ({ ...prev, isFreeScheme: e.target.checked }))}
+                        onClick={e => e.stopPropagation()}
+                      />
+                      <label htmlFor="isFreeScheme" onClick={e => e.stopPropagation()}>
+                        Free Diagnostic Scheme (e.g. NFDS)
+                      </label>
+                    </div>
+                    <p className="scheme-toggle-hint">
+                      Selecting this package on the Billing screen will zero all charges and auto-settle payment — no collection step for scheme patients.
+                    </p>
+                    {formData.isFreeScheme && (
+                      schemes.length > 0 ? (
+                        <select
+                          className="preg-select"
+                          value={formData.schemeName}
+                          onChange={e => setFormData(prev => ({ ...prev, schemeName: e.target.value }))}
+                        >
+                          <option value="">— Select scheme —</option>
+                          {schemes.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        </select>
+                      ) : (
+                        <p className="scheme-missing">
+                          No schemes defined yet — add one in "Free Diagnostic Schemes" above first.
+                        </p>
+                      )
+                    )}
                   </div>
 
                   {/* Preview */}

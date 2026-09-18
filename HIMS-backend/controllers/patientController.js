@@ -405,42 +405,106 @@ export const downloadPatientReportPDF = async (req, res) => {
   }
 };
 
+// Atomically reserves the next reg_no sequence number for a branch+year, on
+// the same connection/transaction as the patient insert that follows — so
+// the whole thing is one atomic unit instead of "generate randomly on the
+// client, hope it doesn't collide, surface a raw 400 if it does" (the old
+// behavior: 'REG-' + Math.random() in HIMS-frontend PatientDetails.jsx).
+// ON DUPLICATE KEY UPDATE ... LAST_INSERT_ID(last_seq+1) is the standard
+// MySQL idiom for a race-safe counter: the row lock during the UPDATE
+// serializes concurrent registrations for the same branch+year, and
+// LAST_INSERT_ID() hands back the post-increment value in the same round
+// trip, so no second SELECT (and no window for another request to sneak in
+// between them) is needed.
+async function reserveRegNo(connection, branchId) {
+  const year = new Date().getFullYear();
+  const effectiveBranchId = branchId || 0; // 0 bucket for patients with no branch_id
+  await connection.query(
+    `INSERT INTO patient_reg_sequences (branch_id, year, last_seq)
+     VALUES (?, ?, 1)
+     ON DUPLICATE KEY UPDATE last_seq = LAST_INSERT_ID(last_seq + 1)`,
+    [effectiveBranchId, year]
+  );
+  const [[{ seq }]] = await connection.query('SELECT LAST_INSERT_ID() AS seq');
+
+  let prefix = 'REG';
+  if (branchId) {
+    const [[branch]] = await connection.query('SELECT hospital_code FROM branches WHERE id = ?', [branchId]);
+    if (branch?.hospital_code) prefix = branch.hospital_code;
+  }
+
+  return `${prefix}-${year}-${String(seq).padStart(6, '0')}`;
+}
+
 export const registerPatient = async (req, res) => {
+  const connection = await db.getConnection();
   try {
     const data = req.body;
-    
-    // Extract fields matching the DB schema
+
+    // Extract fields matching the DB schema. regNo is deliberately NOT read
+    // from the client — see reserveRegNo above.
     const {
-      regNo, regDate, isNewBorn, patientType, consultantName, photo_base64,
+      regDate, isNewBorn, patientType, consultantName, photo_base64,
       title, firstName, middleName, lastName, dob, gender,
-      aadharNumber,
+      aadharNumber, abhaId,
       maritalStatus, occupation, language, educationLevel, religion,
       citizen, emailId, telephone, fileRequired,
       address, suburb, city, country, postalCode, postalAddress,
       kinSameAddress, kinName, kinRelation, kinTelephone,
       kinAddress, kinSuburb, kinCity, kinCountry, kinCode,
       payerType, insuranceProvider, policyNumber,
-      branch_id
+      branch_id,
+      // { [field_key]: value } for admin-defined custom fields — see
+      // patient_custom_field_values / patientFieldConfigController.js.
+      customFields,
     } = data;
+
+    // Required-field validation now also honors whatever an Admin has
+    // configured via Settings > Patient Field Config, not just the two
+    // NOT NULL columns (first_name, last_name) — see spec item #1.
+    const [fieldConfigRows] = await connection.query(
+      'SELECT field_key, label, is_required FROM patient_field_config WHERE is_enabled = 1 AND is_required = 1'
+    );
+    const valueByKey = {
+      title, firstName, middleName, lastName, dob, gender, aadharNumber, abhaId,
+      maritalStatus, occupation, language, educationLevel, religion, citizen,
+      emailId, telephone, address, suburb, city, country, postalCode,
+      kinName, kinRelation, kinTelephone, kinAddress, payerType, insuranceProvider, policyNumber,
+      ...(customFields || {}),
+    };
+    const missing = fieldConfigRows.filter((f) => {
+      const v = valueByKey[f.field_key];
+      return v === undefined || v === null || String(v).trim() === '';
+    });
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required field${missing.length > 1 ? 's' : ''}: ${missing.map((f) => f.label).join(', ')}`,
+      });
+    }
+
+    await connection.beginTransaction();
+
+    const regNo = await reserveRegNo(connection, branch_id || null);
 
     const query = `
       INSERT INTO patients (
         reg_no, reg_date, is_new_born, patient_type, consultant_name, photo_base64,
         title, first_name, middle_name, last_name, dob, gender,
-        aadhar_number,
+        aadhar_number, abha_id,
         marital_status, occupation, language, education_level, religion,
         citizen, email_id, telephone, file_required,
         address, suburb, city, country, postal_code, postal_address_check,
         kin_same_address, kin_name, kin_relation, kin_telephone,
         kin_address, kin_suburb, kin_city, kin_country, kin_code,
         payer_type, insurance_provider, policy_number, branch_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
       regNo, regDate, isNewBorn || false, patientType || 'OP', consultantName || null, photo_base64 || null,
       title, firstName, middleName, lastName, dob || null, gender,
-      aadharNumber || null,
+      aadharNumber || null, abhaId || null,
       maritalStatus, occupation, language, educationLevel, religion,
       citizen, emailId, telephone, fileRequired || false,
       address, suburb, city, country, postalCode, postalAddress || false,
@@ -449,21 +513,36 @@ export const registerPatient = async (req, res) => {
       payerType, insuranceProvider, policyNumber, branch_id || null
     ];
 
-    const [result] = await db.query(query, values);
+    const [result] = await connection.query(query, values);
 
-    res.status(201).json({ 
-      success: true, 
-      message: 'Patient registered successfully', 
+    const customEntries = Object.entries(customFields || {}).filter(([, v]) => v !== undefined && v !== null && v !== '');
+    if (customEntries.length > 0) {
+      await connection.query(
+        `INSERT INTO patient_custom_field_values (patient_id, field_key, value) VALUES ${customEntries.map(() => '(?, ?, ?)').join(', ')}`,
+        customEntries.flatMap(([key, value]) => [result.insertId, key, String(value)])
+      );
+    }
+
+    await connection.commit();
+
+    res.status(201).json({
+      success: true,
+      message: 'Patient registered successfully',
       patientId: result.insertId,
-      regNo 
+      regNo
     });
 
   } catch (error) {
+    await connection.rollback();
     console.error('Error saving patient:', error);
     if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(400).json({ success: false, message: 'Registration number already exists' });
+      // Astronomically unlikely given reserveRegNo's atomic counter, but
+      // kept as a safety net rather than surfacing a raw 500.
+      return res.status(409).json({ success: false, message: 'Registration number collision — please retry.' });
     }
     res.status(500).json({ success: false, message: 'Server error saving patient' });
+  } finally {
+    connection.release();
   }
 };
 

@@ -18,7 +18,11 @@ import {
   X,
   MapPin,
   Clock,
-  Download
+  Download,
+  Zap,
+  AlertTriangle,
+  HeartHandshake,
+  FileText
 } from 'lucide-react';
 import '../../assets/CSS/LabWorklist.css';
 
@@ -544,8 +548,30 @@ export default function LabWorklist() {
                       </td>
                       <td>
                         <div className="patient-info">
-                          <span className="patient-name">{item.patient_name}</span>
+                          <div className="patient-name-row">
+                            <span className="patient-name">{item.patient_name}</span>
+                            {item.priority === 'STAT' && (
+                              <span className="priority-pill stat"><Zap size={9} />STAT</span>
+                            )}
+                            {item.priority === 'Urgent' && (
+                              <span className="priority-pill urgent"><AlertTriangle size={9} />Urgent</span>
+                            )}
+                            {item.billing_type === 'Free_Scheme' && (
+                              <span className="priority-pill scheme"><HeartHandshake size={9} />{item.scheme_name || 'Free Scheme'}</span>
+                            )}
+                          </div>
                           <span className="patient-reg">{item.reg_no}</span>
+                          {(item.referring_clinician || item.referring_facility) && (
+                            <span className="patient-meta-line">
+                              {[item.referring_clinician, item.referring_facility].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                          {item.clinical_notes && (
+                            <span className="patient-meta-line notes" title={item.clinical_notes}>
+                              <FileText size={10} />
+                              {item.clinical_notes.length > 40 ? item.clinical_notes.slice(0, 40) + '…' : item.clinical_notes}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td>{item.patient_id}</td>

@@ -1,0 +1,70 @@
+name: Build & Release LIS Agent
+
+# Triggered by pushing a version tag, e.g.:
+#   git tag v2.2.1 && git push origin v2.2.1
+# electron-builder is run on windows-latest (not macOS/Linux) because
+# LIS-Agent has native modules (serialport, sqlite3) — node-gyp cannot
+# cross-compile those for Windows from another OS, they have to be built on
+# a real Windows machine. The build job then hands the installer + latest.yml
+# to a separate Linux job for the actual SFTP upload, since that's where
+# ssh/rsync tooling lives.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: LIS-Agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + Windows installer
+        run: npm run dist:win
+        env:
+          # electron-builder writes release/latest.yml (for the generic
+          # update feed configured in package.json's "publish" block) as
+          # part of a normal build — no GH_TOKEN or --publish flag needed
+          # here, since we upload it ourselves in the deploy job below
+          # rather than through electron-builder's own publish providers.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lis-agent-installer
+          path: |
+            LIS-Agent/release/*.exe
+            LIS-Agent/release/latest.yml
+            LIS-Agent/release/*.blockmap
+          if-no-files-found: error
+
+  deploy:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lis-agent-installer
+          path: dist-out
+
+      - name: Upload to ka-lims.poxiatechnologies.com/download/
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: 'dist-out/*'
+          target: ${{ vars.DEPLOY_PATH }}
+          strip_components: 1

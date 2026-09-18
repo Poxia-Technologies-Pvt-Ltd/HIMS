@@ -69,18 +69,22 @@ const getPackageById = async (req, res) => {
 // Create new package — stores branch_id
 const createPackage = async (req, res) => {
   try {
-    const { package_id, name, department, description, items, discount_percent, is_active, branch_id } = req.body;
+    const { package_id, name, department, description, items, discount_percent, is_active, branch_id, is_free_scheme, scheme_name } = req.body;
 
     if (!name || !department || !items || !Array.isArray(items)) {
       return res.status(400).json({ success: false, message: 'Name, department, and items array are required' });
+    }
+    if (is_free_scheme && !scheme_name?.trim()) {
+      return res.status(400).json({ success: false, message: 'scheme_name is required for a free-scheme package (e.g. "NFDS").' });
     }
 
     const pkgId = package_id || 'PKG-' + Math.floor(1000 + Math.random() * 9000);
 
     const [result] = await db.query(
-      `INSERT INTO billing_packages (package_id, name, department, description, items, discount_percent, is_active, branch_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [pkgId, name, department, description || '', JSON.stringify(items), discount_percent || 0, is_active !== undefined ? is_active : true, branch_id || null]
+      `INSERT INTO billing_packages (package_id, name, department, description, items, discount_percent, is_active, branch_id, is_free_scheme, scheme_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [pkgId, name, department, description || '', JSON.stringify(items), discount_percent || 0, is_active !== undefined ? is_active : true, branch_id || null,
+        !!is_free_scheme, is_free_scheme ? scheme_name.trim() : null]
     );
 
     res.status(201).json({
@@ -102,7 +106,11 @@ const createPackage = async (req, res) => {
 const updatePackage = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, department, description, items, discount_percent, is_active } = req.body;
+    const { name, department, description, items, discount_percent, is_active, is_free_scheme, scheme_name } = req.body;
+
+    if (is_free_scheme && scheme_name !== undefined && !scheme_name?.trim()) {
+      return res.status(400).json({ success: false, message: 'scheme_name is required for a free-scheme package (e.g. "NFDS").' });
+    }
 
     const updateFields = [];
     const values = [];
@@ -113,6 +121,8 @@ const updatePackage = async (req, res) => {
     if (items !== undefined) { updateFields.push('items = ?'); values.push(JSON.stringify(items)); }
     if (discount_percent !== undefined) { updateFields.push('discount_percent = ?'); values.push(discount_percent); }
     if (is_active !== undefined) { updateFields.push('is_active = ?'); values.push(is_active ? 1 : 0); }
+    if (is_free_scheme !== undefined) { updateFields.push('is_free_scheme = ?'); values.push(is_free_scheme ? 1 : 0); }
+    if (scheme_name !== undefined) { updateFields.push('scheme_name = ?'); values.push(is_free_scheme ? (scheme_name || null) : null); }
 
     if (updateFields.length === 0) {
       return res.status(400).json({ success: false, message: 'No fields to update' });
