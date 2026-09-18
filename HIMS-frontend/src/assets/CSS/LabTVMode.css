@@ -1,0 +1,703 @@
+/* Lobby display — white and blue, read from across a waiting room.
+   Nothing under 18px, nothing tappable under 56px. */
+
+/* Overscan insets, written in by the kiosk shell after calibration. A plain
+   browser leaves them at zero, so the same stylesheet serves both. */
+:root {
+  --tv-inset-top: 0px;
+  --tv-inset-right: 0px;
+  --tv-inset-bottom: 0px;
+  --tv-inset-left: 0px;
+
+  --tv-blue:   #1d4ed8;
+  --tv-blue-2: #0ea5e9;
+  --tv-ink:    #0f172a;
+  --tv-muted:  #5b6b82;
+  --tv-line:   #e3e9f2;
+  --tv-wash:   #f4f7fc;
+}
+
+.tv-root {
+  /* No explicit height. With position:fixed the top/bottom offsets below set
+     the box; a height of 100vh would beat `bottom` and spill the board past
+     the calibrated area — which looks exactly like the calibration being
+     ignored. */
+  display: flex; flex-direction: column;
+  background: linear-gradient(170deg, #ffffff 0%, #eef4ff 100%);
+  color: var(--tv-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden; user-select: none;
+}
+
+/* ── Header: state identity left, Meril right ─────────────────────────── */
+.tv-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 40px; background: #fff; border-bottom: 3px solid var(--tv-blue);
+  box-shadow: 0 2px 14px rgba(15,23,42,.06);
+}
+.tv-brand { display: flex; align-items: center; gap: 16px; }
+.tv-logo { height: 68px; width: auto; display: block; }
+.tv-logo.meril { height: 44px; }
+.tv-meril-mark { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.tv-meril-mark span { font-size: 11px; font-weight: 700; color: var(--tv-muted);
+  letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.tv-govt { font-size: 12px; font-weight: 800; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--tv-blue); }
+.tv-brand h1 { margin: 2px 0 0; font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+.tv-brand p { margin: 1px 0 0; font-size: 13.5px; color: var(--tv-muted); }
+.tv-right { display: flex; align-items: center; gap: 26px; }
+.tv-clock { text-align: right; }
+.tv-time { font-size: 32px; font-weight: 800; line-height: 1; color: var(--tv-ink); }
+.tv-date { font-size: 13.5px; color: var(--tv-muted); margin-top: 3px; }
+
+/* ── Stage ────────────────────────────────────────────────────────────── */
+.tv-stage { flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 26px 56px; position: relative; }
+.tv-slide { width: 100%; max-width: 1240px; text-align: center; animation: fade .55s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+.tv-slide-title { margin: 0 0 30px; }
+.tv-slide-title .bi-en { font-size: 38px; color: var(--tv-ink); font-weight: 800; letter-spacing: -.02em; }
+.tv-slide-title .bi-hi { font-size: 22px; color: var(--tv-blue); font-weight: 700; }
+
+/* Hindi and English both legible — English is not a footnote here. */
+.bi { display: inline-flex; flex-direction: column; gap: 4px; }
+/* English is the primary language on this screen: full size, heaviest weight,
+   darkest ink. Hindi sits under it as the supporting line — present and
+   readable, but never competing for the first glance. */
+.bi-en { font-weight: 800; line-height: 1.2; color: var(--tv-ink); }
+.bi-hi { font-size: .74em; font-weight: 600; color: var(--tv-muted); line-height: 1.25; }
+.bi-sub { margin-top: 10px; opacity: .95; font-size: .82em; }
+
+.tv-steps { list-style: none; margin: 0 auto; padding: 0; display: flex;
+  flex-direction: column; gap: 18px; max-width: 940px; text-align: left; font-size: 26px; }
+.tv-steps li { display: flex; align-items: flex-start; gap: 20px;
+  background: #fff; border: 1px solid var(--tv-line); border-radius: 16px;
+  padding: 20px 24px; box-shadow: 0 2px 10px rgba(15,23,42,.04); }
+.tv-step-n { flex-shrink: 0; width: 46px; height: 46px; border-radius: 12px;
+  background: linear-gradient(135deg, var(--tv-blue), var(--tv-blue-2)); color: #fff;
+  display: grid; place-items: center; font-size: 22px; font-weight: 800; }
+
+.tv-figures { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; }
+.tv-figures.small { margin-top: 22px; }
+.tv-fig { background: #fff; border: 1px solid var(--tv-line); border-top: 4px solid var(--tv-blue);
+  border-radius: 18px; padding: 24px 42px; min-width: 236px;
+  box-shadow: 0 4px 16px rgba(15,23,42,.05); }
+.tv-fig b { display: block; font-size: 60px; font-weight: 800; line-height: 1;
+  margin-bottom: 8px; color: var(--tv-blue); }
+.tv-figures.small .tv-fig b { font-size: 40px; }
+.tv-fig.ok { border-top-color: #16a34a; } .tv-fig.ok b { color: #16a34a; }
+.tv-fig.run { border-top-color: #d97706; } .tv-fig.run b { color: #d97706; }
+.tv-fig .bi-en { font-size: 19px; } .tv-fig .bi-hi { font-size: 14.5px; }
+
+.tv-tests { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 14px; max-width: 1140px; margin-inline: auto; }
+.tv-test { display: flex; align-items: center; gap: 14px; font-size: 20px;
+  background: #fff; border: 1px solid var(--tv-line); border-radius: 14px; padding: 16px 20px;
+  box-shadow: 0 2px 8px rgba(15,23,42,.04); }
+.tv-test svg { color: #16a34a; flex-shrink: 0; }
+.tv-test-name { flex: 1; text-align: left; font-weight: 650; }
+.tv-test-count { font-weight: 800; color: var(--tv-blue); font-size: 24px; }
+.tv-muted { color: var(--tv-muted); font-size: 17px; }
+
+.tv-dots { position: absolute; bottom: 16px; display: flex; gap: 8px; }
+.tv-dots span { width: 9px; height: 9px; border-radius: 50%; background: #c9d6ea; transition: all .3s; }
+.tv-dots span.on { background: var(--tv-blue); width: 28px; border-radius: 5px; }
+
+.tv-cta { position: fixed; bottom: 32px; right: 32px; display: flex; align-items: center;
+  gap: 16px; padding: 20px 36px; border: 0; border-radius: 999px; cursor: pointer;
+  background: linear-gradient(135deg, var(--tv-blue), var(--tv-blue-2)); color: #fff; font-size: 23px;
+  box-shadow: 0 14px 34px -10px rgba(29,78,216,.65); }
+.tv-cta .bi-en { color: #fff; font-size: 25px; }
+.tv-cta .bi-hi { color: rgba(255,255,255,.85); font-size: 16px; }
+
+/* ── Collection panel ─────────────────────────────────────────────────── */
+.tv-modal-bg { position: fixed; inset: 0; background: rgba(15,23,42,.45);
+  display: grid; place-items: center; padding: 26px; z-index: 50; backdrop-filter: blur(3px); }
+.tv-modal { background: #fff; border-radius: 22px; padding: 32px;
+  width: min(720px, 100%); max-height: 92vh; overflow-y: auto; position: relative;
+  text-align: center; box-shadow: 0 30px 70px -20px rgba(15,23,42,.4); }
+.tv-modal h2 { font-size: 25px; margin: 0 0 14px; font-weight: 800; }
+.tv-modal h2 .bi-en { font-size: 26px; } .tv-modal h2 .bi-hi { font-size: 17px; }
+.tv-close { position: absolute; top: 16px; right: 16px; width: 48px; height: 48px;
+  border-radius: 50%; border: 1px solid var(--tv-line); cursor: pointer;
+  background: var(--tv-wash); color: var(--tv-ink); }
+
+.tv-input { font-size: 38px; font-weight: 800; letter-spacing: .05em; min-height: 62px;
+  background: var(--tv-wash); border: 2px solid var(--tv-line); border-radius: 14px;
+  padding: 10px; margin-bottom: 12px; word-break: break-all; color: var(--tv-ink); }
+.tv-ph { color: #a9b8ce; }
+.tv-err { color: #b91c1c; font-size: 17px; margin: 0 0 12px; font-weight: 600; }
+.tv-done { color: #15803d; font-size: 18px; margin: 0 0 14px; font-weight: 700; }
+
+.tv-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; margin-bottom: 16px; }
+.tv-pad button { height: 72px; font-size: 29px; font-weight: 700; border-radius: 14px;
+  border: 1px solid var(--tv-line); background: #fff; color: var(--tv-ink); cursor: pointer;
+  display: grid; place-items: center; box-shadow: 0 1px 4px rgba(15,23,42,.05); }
+.tv-pad button.sm { font-size: 16px; color: var(--tv-muted); }
+.tv-pad button:active { background: #e8f0ff; border-color: var(--tv-blue); }
+
+.tv-actions { display: flex; gap: 12px; }
+.tv-btn { flex: 1; min-height: 62px; border: 0; border-radius: 14px; cursor: pointer;
+  background: linear-gradient(135deg, var(--tv-blue), var(--tv-blue-2)); color: #fff;
+  font-size: 19px; font-weight: 700;
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+.tv-btn.ghost { background: #fff; color: var(--tv-blue); border: 2px solid var(--tv-blue); }
+.tv-btn.sm { min-height: 50px; font-size: 16px; padding: 0 18px; flex: 0 0 auto; }
+.tv-btn.wide { width: 100%; margin-top: 16px; }
+.tv-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* The camera has to be visible while scanning — a patient holding a slip up to
+   a blank panel has no idea whether it is working. */
+.tv-scan { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.tv-video { width: 100%; max-width: 480px; aspect-ratio: 4 / 3; object-fit: cover;
+  border-radius: 18px; background: #0b1220; border: 3px solid var(--tv-blue);
+  display: block; }
+.tv-scan-frame::before {
+  content: 'Starting camera…'; position: absolute; inset: 0;
+  display: grid; place-items: center; color: #7f9dc4; font-size: 15px; font-weight: 600;
+  pointer-events: none;
+}
+/* Once frames arrive the video paints over the label, so it only shows during
+   the second or two a webcam takes to wake up. */
+.tv-scan-frame { position: relative; }
+.tv-scan-frame::after {
+  content: ''; position: absolute; inset: 16%; border: 3px dashed rgba(255,255,255,.85);
+  border-radius: 12px; pointer-events: none;
+}
+
+.tv-reports { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.tv-report { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: var(--tv-wash); border: 1px solid var(--tv-line); border-radius: 14px;
+  padding: 15px 18px; text-align: left; }
+.tv-report-name { font-size: 19px; font-weight: 700; }
+.tv-report-id { font-size: 13px; color: var(--tv-muted); font-family: ui-monospace, monospace; }
+.tv-report-btns { display: flex; gap: 9px; }
+
+/* ══ Depth, motion, and a screen that fills the wall ══════════════════════
+   A lobby TV is looked at from six feet away by someone deciding whether this
+   thing is worth walking over to. Everything below exists to answer that:
+   real depth so cards read as objects, motion that draws the eye to the one
+   button that matters, and type that scales with the screen instead of
+   staying phone-sized on a 55-inch panel. */
+
+/* Everything outside the calibrated area is black — a television that crops
+   its edges then shows nothing there, rather than half a header sliding off
+   the panel. On a normal screen every inset is zero and this is simply
+   fullscreen. */
+html, body { background: #000; }
+
+.tv-root {
+  overflow: hidden;
+  position: fixed;
+  top: var(--tv-inset-top);
+  right: var(--tv-inset-right);
+  bottom: var(--tv-inset-bottom);
+  left: var(--tv-inset-left);
+  /* `perspective` below already makes this the containing block for every
+     position:fixed descendant, so the call-to-action, the reports board and
+     both overlays are confined to this box without each carrying the inset
+     itself. */
+  /* Type scales with the panel: 1vw of a 55" TV is a lot more than of a
+     laptop, so one rule serves both without a media-query ladder. */
+  font-size: clamp(15px, 0.85vw, 26px);
+  perspective: 1400px;
+}
+
+/* Slow drifting glow behind everything — enough to feel alive, never enough
+   to compete with the content. */
+.tv-root::before {
+  content: ''; position: absolute; inset: -25%;
+  background:
+    radial-gradient(38% 42% at 18% 22%, rgba(29,78,216,.13), transparent 60%),
+    radial-gradient(34% 38% at 82% 74%, rgba(14,165,233,.15), transparent 60%);
+  animation: drift 26s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes drift {
+  from { transform: translate3d(-2%, -1%, 0) scale(1); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.08); }
+}
+
+.tv-stage { transform-style: preserve-3d; }
+.tv-slide { transform-style: preserve-3d; animation: slideIn .8s cubic-bezier(.22,.9,.3,1); }
+@keyframes slideIn {
+  from { opacity: 0; transform: perspective(1200px) rotateX(9deg) translate3d(0, 28px, -90px); }
+  to   { opacity: 1; transform: perspective(1200px) rotateX(0) translate3d(0, 0, 0); }
+}
+
+/* Step cards sit slightly proud of the page and lift in one after another. */
+.tv-steps li {
+  transform-style: preserve-3d;
+  animation: rise .7s cubic-bezier(.22,.9,.3,1) backwards;
+  box-shadow: 0 10px 24px -12px rgba(29,78,216,.35), 0 2px 6px rgba(15,23,42,.05);
+}
+.tv-steps li:nth-child(1) { animation-delay: .10s; }
+.tv-steps li:nth-child(2) { animation-delay: .22s; }
+.tv-steps li:nth-child(3) { animation-delay: .34s; }
+@keyframes rise {
+  from { opacity: 0; transform: translate3d(0, 26px, -60px) rotateX(12deg); }
+  to   { opacity: 1; transform: none; }
+}
+.tv-step-n {
+  box-shadow: 0 8px 18px -6px rgba(29,78,216,.7);
+  transform: translateZ(26px);
+}
+
+.tv-fig {
+  transform-style: preserve-3d;
+  animation: rise .7s cubic-bezier(.22,.9,.3,1) backwards;
+  box-shadow: 0 16px 34px -18px rgba(29,78,216,.5), 0 2px 8px rgba(15,23,42,.05);
+}
+.tv-fig:nth-child(2) { animation-delay: .12s; }
+.tv-fig:nth-child(3) { animation-delay: .24s; }
+.tv-fig b { transform: translateZ(20px); }
+
+.tv-test { animation: rise .6s cubic-bezier(.22,.9,.3,1) backwards; }
+.tv-test:nth-child(2n) { animation-delay: .08s; }
+.tv-test:nth-child(3n) { animation-delay: .16s; }
+
+/* ── Meril slide ────────────────────────────────────────────────────── */
+.tv-meril { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px;
+  max-width: 1180px; margin-inline: auto; transform-style: preserve-3d; }
+.tv-card3d {
+  margin: 0; background: #fff; border: 1px solid var(--tv-line); border-radius: 20px;
+  overflow: hidden; transform-style: preserve-3d;
+  box-shadow: 0 22px 44px -22px rgba(15,23,42,.45);
+  animation: tilt 9s ease-in-out infinite alternate, rise .8s cubic-bezier(.22,.9,.3,1) backwards;
+}
+/* Each card breathes on its own axis so the row never looks like one slab. */
+@keyframes tilt {
+  from { transform: rotateY(-6deg) rotateX(2deg) translateZ(0); }
+  to   { transform: rotateY(6deg) rotateX(-2deg) translateZ(28px); }
+}
+.tv-card3d img { width: 100%; height: 210px; object-fit: cover; display: block; }
+.tv-card3d figcaption { padding: 16px 18px 20px; display: flex; flex-direction: column; gap: 5px; }
+.tv-card3d strong { font-size: 19px; font-weight: 800; color: var(--tv-ink); }
+.tv-card3d span { font-size: 15px; color: var(--tv-muted); font-weight: 600; }
+
+/* ── Emblem stand-in until the official PNG is supplied ───────────────── */
+.tv-emblem {
+  width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center;
+  background: linear-gradient(135deg, #0f5132, #157347); color: #fff;
+  font-weight: 900; font-size: 20px; letter-spacing: .04em;
+  box-shadow: 0 8px 18px -8px rgba(21,115,71,.8);
+}
+
+/* ── The one thing we want touched ────────────────────────────────────── */
+.tv-cta {
+  position: fixed; bottom: 32px; right: 32px;
+  width: auto; max-width: 42vw;          /* never spans the screen */
+  animation: pulse 2.6s ease-in-out infinite;
+  transform-style: preserve-3d;
+}
+/* A ring that keeps leaving the button — the standard "press me" cue, and the
+   only animation on screen that repeats indefinitely. */
+.tv-cta::after {
+  content: ''; position: absolute; inset: -6px; border-radius: 999px;
+  border: 3px solid rgba(29,78,216,.55);
+  animation: ripple 2.6s ease-out infinite; pointer-events: none;
+}
+@keyframes pulse {
+  0%, 100% { transform: translateZ(0) scale(1);    box-shadow: 0 14px 34px -10px rgba(29,78,216,.65); }
+  50%      { transform: translateZ(30px) scale(1.045); box-shadow: 0 22px 50px -12px rgba(29,78,216,.85); }
+}
+@keyframes ripple {
+  0%   { opacity: .75; transform: scale(1); }
+  70%  { opacity: 0;   transform: scale(1.28); }
+  100% { opacity: 0;   transform: scale(1.28); }
+}
+.tv-cta:active { transform: scale(.97); }
+
+/* A hand-tap hint beside the button, for anyone unsure the screen responds. */
+.tv-touch-hint {
+  position: fixed; bottom: 46px; right: 300px; font-size: 17px; font-weight: 700;
+  color: var(--tv-blue); display: flex; align-items: center; gap: 9px;
+  animation: nudge 2.6s ease-in-out infinite;
+}
+@keyframes nudge {
+  0%, 100% { transform: translateX(0); opacity: .55; }
+  50%      { transform: translateX(-10px); opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  .tv-meril { grid-template-columns: 1fr; }
+  .tv-card3d { animation: none; }
+  .tv-touch-hint { display: none; }
+}
+
+/* Anyone who has asked their OS to stop animations gets a still screen. */
+@media (prefers-reduced-motion: reduce) {
+  .tv-root::before, .tv-slide, .tv-steps li, .tv-fig, .tv-test,
+  .tv-card3d, .tv-cta, .tv-cta::after, .tv-touch-hint { animation: none !important; }
+}
+
+/* ══ Reports Ready — airport departures board ════════════════════════════
+   Deliberately the visual language of a flight board: people already know how
+   to read one from across a hall. Columns never move, rows stripe so the eye
+   tracks along a line, and the sample number — the thing printed on the slip
+   in their hand — is the heaviest element on the screen. */
+.tv-board {
+  position: fixed; inset: 6% 5%; z-index: 40;
+  display: flex; flex-direction: column;
+  background: #fff; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 40px 90px -30px rgba(15,23,42,.65);
+  animation: boardIn .6s cubic-bezier(.22,.9,.3,1);
+}
+@keyframes boardIn {
+  from { opacity: 0; transform: translate3d(0, 30px, -140px) rotateX(8deg); }
+  to   { opacity: 1; transform: none; }
+}
+
+.tv-board-head {
+  display: flex; align-items: center; gap: 18px;
+  background: linear-gradient(180deg, #1e5aa8 0%, #16457f 100%);
+  color: #fff; padding: 14px 30px;
+}
+.tv-board-icon { font-size: 30px; }
+.tv-board-head h2 {
+  margin: 0; font-size: clamp(28px, 3.1vw, 54px); font-weight: 800;
+  letter-spacing: .06em; line-height: 1;
+}
+.tv-board-hi { margin-left: auto; font-size: clamp(15px, 1.2vw, 24px); font-weight: 700; opacity: .93; }
+
+/* The gold column strip is the part everyone recognises. */
+.tv-board-cols, .tv-board-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.5fr) 118px;
+  align-items: center; gap: 12px; padding: 0 18px;
+}
+.tv-board-cols {
+  background: linear-gradient(180deg, #e9c766 0%, #d8b451 100%);
+  color: #23324a; font-weight: 800; letter-spacing: .1em;
+  font-size: clamp(10px, .72vw, 15px); padding-block: 8px;
+  border-bottom: 2px solid rgba(0,0,0,.12);
+}
+
+.tv-board-body { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 0; }
+.tv-board-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* A rule between the columns, so the eye does not run a row across the gap
+   and read one patient's name against another's test. */
+.tv-board-col + .tv-board-col { border-left: 3px solid #16457f; }
+.tv-board-rows { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.tv-board-empty { flex: 1; }
+.tv-board-row {
+  flex: 1; min-height: 0;
+  border-bottom: 1px solid #e6ebf2;
+  font-size: clamp(14px, 1.15vw, 26px);
+  animation: rowIn .45s ease backwards;
+}
+.tv-board-row.alt { background: #eef2f7; }
+.tv-board-row:nth-child(1) { animation-delay: .04s; }
+.tv-board-row:nth-child(2) { animation-delay: .08s; }
+.tv-board-row:nth-child(3) { animation-delay: .12s; }
+.tv-board-row:nth-child(4) { animation-delay: .16s; }
+.tv-board-row:nth-child(5) { animation-delay: .20s; }
+.tv-board-row:nth-child(6) { animation-delay: .24s; }
+.tv-board-row:nth-child(7) { animation-delay: .28s; }
+.tv-board-row:nth-child(8) { animation-delay: .32s; }
+@keyframes rowIn { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+
+.c-name { font-weight: 800; color: #16457f; text-transform: capitalize;
+  display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.c-name em { font-style: normal; font-size: .74em; font-weight: 700;
+  color: var(--tv-muted); text-transform: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-test { font-weight: 650; color: #23324a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.c-id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 800;
+  color: #0f172a; letter-spacing: .06em; }
+.c-status { font-weight: 800; color: #15803d; letter-spacing: .04em; }
+
+.tv-board-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  background: linear-gradient(180deg, #1e5aa8 0%, #16457f 100%);
+  color: #fff; padding: 12px 30px;
+}
+.tv-board-cta { font-size: clamp(14px, 1.3vw, 26px); font-weight: 800; letter-spacing: .05em; }
+.tv-board-meril { margin-left: auto; margin-right: 26px; font-size: clamp(12px, 1vw, 20px);
+  font-weight: 600; color: rgba(255,255,255,.85); letter-spacing: .03em; }
+.tv-board-meril b { color: #f0cf72; font-weight: 800; }
+.tv-board-cta b { color: #f0cf72; }
+.tv-board-clock { text-align: right; font-size: clamp(20px, 2vw, 40px); font-weight: 800; color: #f0cf72; line-height: 1.05; }
+.tv-board-clock em { display: block; font-style: normal; font-size: .44em;
+  font-weight: 600; color: #fff; opacity: .9; letter-spacing: .02em; }
+
+@media (max-width: 1100px) { .tv-board-body { grid-template-columns: 1fr; } }
+@media (max-width: 900px) {
+  .tv-board { inset: 4vh 3vw; }
+  .tv-board-cols, .tv-board-row { grid-template-columns: 1fr 1fr 90px 90px; gap: 10px; padding: 0 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tv-board, .tv-board-row { animation: none !important; }
+}
+
+/* ── In-progress list inside the collection panel ──────────────────────── */
+.tv-sub { margin: 22px 0 10px; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.tv-sub strong { font-size: 18px; font-weight: 800; }
+.tv-sub span { font-size: 14px; color: var(--tv-muted); font-weight: 600; }
+.tv-report.waiting { background: #fffbeb; border-color: #fde68a; }
+.tv-chip { background: #fff; border: 1px solid #fcd34d; color: #b45309;
+  border-radius: 999px; padding: 5px 13px; font-size: 13.5px; font-weight: 800; white-space: nowrap; }
+
+@media (max-width: 900px) { .tv-ready { display: none; } }
+@media (prefers-reduced-motion: reduce) { .tv-ready, .tv-ready li { animation: none !important; } }
+
+/* ══ Meril photography as the backdrop ═══════════════════════════════════
+   The images carry the room; the veil keeps every caption readable. Both
+   matter — a photo wall nobody can read text against is decoration, and a
+   plain white screen is a spreadsheet. */
+.tv-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+.tv-bg-img {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  opacity: 0; transform: scale(1.06);
+  transition: opacity 1.6s ease;
+  /* Slow drift so a still photograph never looks frozen on a wall. */
+  animation: kenburns 26s ease-in-out infinite alternate;
+}
+.tv-bg-img.on { opacity: 1; }
+@keyframes kenburns {
+  from { transform: scale(1.06) translate3d(0, 0, 0); }
+  to   { transform: scale(1.16) translate3d(-2%, -1.5%, 0); }
+}
+/* White-to-blue veil: heavy enough for body text, light enough that the
+   photograph still reads as a photograph. */
+.tv-bg-veil {
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(150deg, rgba(255,255,255,.955) 0%, rgba(238,244,255,.90) 45%, rgba(219,234,254,.88) 100%);
+}
+/* Only the in-flow elements get relative positioning. Naming .tv-cta here
+   overrode its own `position: fixed` — later rule wins — which turned the
+   button from a corner pill into a full-width bar across the bottom of the
+   screen. Fixed elements need the stacking order, not a new position. */
+.tv-head, .tv-stage { position: relative; z-index: 2; }
+.tv-cta, .tv-touch-hint { z-index: 20; }
+.tv-head { background: rgba(255,255,255,.92); backdrop-filter: blur(8px); }
+.tv-root::before { z-index: 1; }
+
+/* Cards float above the photograph, so they need their own opacity and a
+   stronger shadow than they did on flat white. */
+/* No backdrop-filter here on purpose: every element carrying one becomes its
+   own composited layer, and a dozen of them over an already-veiled photograph
+   cost tile memory for an effect that cannot be seen. Opacity alone gives the
+   same look. */
+.tv-steps li, .tv-fig, .tv-test, .tv-card3d {
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 18px 40px -20px rgba(15,23,42,.5), 0 2px 8px rgba(15,23,42,.06);
+}
+
+/* The Meril slide is now words over the photography, not a second copy of it. */
+.tv-meril { grid-template-columns: repeat(3, 1fr); }
+.tv-card3d { padding: 0; overflow: hidden; border-radius: 22px; text-align: center; }
+.tv-card3d img { width: 100%; height: clamp(150px, 20vh, 250px); object-fit: cover; display: block; }
+.tv-card3d figcaption { padding: 16px 18px 20px; display: flex; flex-direction: column; gap: 5px; }
+.tv-card3d strong { font-size: 20px; font-weight: 800; color: var(--tv-ink); line-height: 1.3; }
+.tv-card3d span { font-size: 15px; color: var(--tv-muted); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) { .tv-bg-img { animation: none !important; } }
+
+/* ── Leaders slide ────────────────────────────────────────────────────── */
+.tv-leaders { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px;
+  max-width: 1420px; margin-inline: auto; }
+/* The implementation partner, marked as such — the four state officers carry a
+   government seal above them, and a vendor sitting in that row unmarked would
+   read as holding office. */
+.tv-leader.partner { border-top: 4px solid var(--tv-blue-2); }
+.tv-leader.partner .tv-leader-ph { box-shadow: 0 8px 22px -8px rgba(14,165,233,.65); }
+.tv-leader.partner .tv-leader-role { color: var(--tv-blue-2); }
+.tv-leader {
+  margin: 0; background: rgba(255,255,255,.96);
+  border: 1px solid var(--tv-line); border-radius: 20px; padding: 22px 16px 20px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  box-shadow: 0 18px 40px -20px rgba(15,23,42,.5);
+  animation: rise .7s cubic-bezier(.22,.9,.3,1) backwards;
+}
+/* Circular crop keeps four portraits of different sizes and aspect ratios
+   looking like one set — these arrive at anything from 712px to 1601px wide. */
+.tv-leader-ph {
+  width: 118px; height: 118px; border-radius: 50%; overflow: hidden;
+  border: 4px solid #fff; box-shadow: 0 8px 22px -8px rgba(29,78,216,.55);
+  background: var(--tv-wash);
+}
+.tv-leader-ph img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
+.tv-leader figcaption { display: flex; flex-direction: column; gap: 3px; text-align: center; }
+.tv-leader strong { font-size: 17.5px; font-weight: 800; color: var(--tv-ink); line-height: 1.25; }
+.tv-leader-role { font-size: 14px; font-weight: 700; color: var(--tv-blue); }
+.tv-leader-org { font-size: 12.5px; color: var(--tv-muted); font-weight: 600; line-height: 1.35; }
+
+/* ── The board as a slide rather than an overlay ──────────────────────── */
+/* As a slide the board takes the stage entirely — this is the screen people
+   walk over to read, so it gets the room. */
+.tv-slide-board { max-width: none; width: 100%; height: 100%; display: flex; }
+.tv-board.inline {
+  position: static; inset: auto; width: 100%; height: 100%;
+  border-radius: 14px;
+  box-shadow: 0 24px 56px -26px rgba(15,23,42,.5);
+  animation: rise .7s cubic-bezier(.22,.9,.3,1);
+}
+.tv-stage:has(.tv-slide-board) { padding: 14px 22px 34px; }
+
+@media (max-width: 1400px) { .tv-leaders { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px) { .tv-leaders { grid-template-columns: repeat(2, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .tv-leader { animation: none !important; } }
+
+/* ── Analytics slide ──────────────────────────────────────────────────── */
+.tv-analytics { display: grid; grid-template-columns: minmax(300px, 380px) 1fr;
+  gap: 30px; align-items: center; max-width: 1300px; margin-inline: auto; }
+.tv-analytics-right { display: flex; flex-direction: column; gap: 16px; }
+
+.tv-donut { position: relative; display: grid; place-items: center; }
+.tv-donut svg { width: 100%; max-width: 340px; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: #dbe6f6; stroke-width: 22; }
+.ring-fg {
+  fill: none; stroke: url(#g); stroke-width: 22; stroke-linecap: round;
+  stroke: var(--tv-blue);
+  /* Drawn on rather than snapped, so the slide has a moment of life. */
+  animation: ringIn 1.4s cubic-bezier(.22,.9,.3,1) backwards;
+}
+@keyframes ringIn { from { stroke-dasharray: 0 999; } }
+.tv-donut-mid { position: absolute; text-align: center; }
+.tv-donut-mid b { display: block; font-size: clamp(38px, 4vw, 74px); font-weight: 800;
+  color: var(--tv-blue); line-height: 1; }
+.tv-donut-mid span { display: block; font-size: 17px; font-weight: 800; color: var(--tv-ink); margin-top: 4px; }
+.tv-donut-mid em { display: block; font-style: normal; font-size: 14px;
+  font-weight: 600; color: var(--tv-muted); }
+
+.tv-panel { background: rgba(255,255,255,.96);
+  border: 1px solid var(--tv-line); border-radius: 18px; padding: 16px 20px;
+  box-shadow: 0 14px 32px -18px rgba(15,23,42,.45); }
+.tv-panel h3 { margin: 0 0 12px; display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.tv-panel h3 strong { font-size: 18px; font-weight: 800; }
+.tv-panel h3 span { font-size: 13.5px; color: var(--tv-muted); font-weight: 600; }
+
+.tv-bars { display: flex; flex-direction: column; gap: 9px; }
+.tv-bar-row { display: grid; grid-template-columns: minmax(0, 210px) 1fr 52px;
+  align-items: center; gap: 12px; animation: rise .5s backwards; }
+.tv-bar-label { font-size: 15px; font-weight: 700; text-align: left; color: var(--tv-ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-bar-track { height: 16px; background: #e7eef9; border-radius: 999px; overflow: hidden; }
+.tv-bar-fill { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--tv-blue), var(--tv-blue-2));
+  animation: growBar 1.1s cubic-bezier(.22,.9,.3,1) backwards; }
+@keyframes growBar { from { width: 0 !important; } }
+.tv-bar-val { font-size: 17px; font-weight: 800; color: var(--tv-blue); text-align: right; }
+
+.tv-weekline { display: flex; align-items: baseline; gap: 22px; justify-content: center;
+  font-size: 16px; color: var(--tv-muted); font-weight: 600; }
+.tv-weekline b { font-size: 27px; font-weight: 800; color: var(--tv-ink); }
+.tv-weekline-lbl { margin-left: auto; font-size: 13px; opacity: .8; }
+
+@media (max-width: 1100px) { .tv-analytics { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) {
+  .ring-fg, .tv-bar-fill, .tv-bar-row { animation: none !important; }
+}
+
+/* ── Period counters on the stats slide ───────────────────────────────── */
+.tv-periods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.tv-period { background: rgba(255,255,255,.94); backdrop-filter: blur(10px);
+  border: 1px solid var(--tv-line); border-radius: 16px; padding: 14px 16px;
+  box-shadow: 0 12px 28px -18px rgba(15,23,42,.45); }
+.tv-period b { display: block; font-size: clamp(26px, 2.6vw, 46px); font-weight: 800;
+  color: var(--tv-blue); line-height: 1; font-variant-numeric: tabular-nums; }
+.tv-period span { display: block; font-size: 15px; font-weight: 800; color: var(--tv-ink); margin-top: 5px; }
+.tv-period em { display: block; font-style: normal; font-size: 13px; color: var(--tv-muted); font-weight: 600; }
+/* The year figure is the headline of the three, so it gets the accent. */
+.tv-period.year { background: linear-gradient(135deg, var(--tv-blue), var(--tv-blue-2)); border: 0; }
+.tv-period.year b, .tv-period.year span { color: #fff; }
+.tv-period.year em { color: rgba(255,255,255,.85); }
+
+/* ── A tapped board row ───────────────────────────────────────────────── */
+.tv-board-row.tappable { cursor: pointer; }
+.tv-board-row.tappable:hover { background: #dbeafe; }
+.tv-board-row.tappable:active { background: #bfdbfe; }
+
+.tv-picked { margin: 0 0 14px; background: var(--tv-wash); border: 1px solid var(--tv-line);
+  border-radius: 12px; padding: 11px 14px; font-size: 15px; }
+.tv-picked strong { color: var(--tv-blue); }
+.tv-picked span { display: block; font-size: 13px; color: var(--tv-muted); margin-top: 3px; }
+
+/* ── Report viewer ────────────────────────────────────────────────────── */
+.tv-viewer-bg { position: fixed; inset: 0; background: rgba(15,23,42,.6); z-index: 60;
+  display: grid; place-items: center; padding: 2vh 2vw; backdrop-filter: blur(3px); }
+/* Sized off the viewport so it fills a lobby TV and still fits a small
+   monitor without the document being cropped. */
+.tv-viewer { background: #fff; border-radius: 16px; width: min(960px, 96vw); height: 94vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 40px 90px -30px rgba(15,23,42,.7); }
+.tv-viewer-head { display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+  border-bottom: 1px solid var(--tv-line); }
+.tv-viewer-head > div { flex: 1; display: flex; flex-direction: column; }
+.tv-viewer-head strong { font-size: 17px; font-weight: 800; }
+.tv-viewer-head span { font-size: 12.5px; color: var(--tv-muted); font-family: ui-monospace, monospace; }
+.tv-viewer-head .tv-close { position: static; width: 44px; height: 44px; }
+.tv-viewer-doc { flex: 1; width: 100%; overflow-y: auto; background: #fff; padding: 0 0 18px; }
+
+@media (max-width: 900px) {
+  .tv-periods { grid-template-columns: 1fr; }
+  .tv-viewer { width: 100vw; height: 100vh; border-radius: 0; }
+}
+
+/* ── Tap a ready report: one button, nothing to type ──────────────────── */
+.tv-send { width: min(560px, 100%); }
+.tv-send-what { margin: 0 0 12px; display: flex; flex-direction: column; gap: 3px; }
+.tv-send-what strong { font-size: 22px; font-weight: 800; color: var(--tv-blue); }
+.tv-send-what span { font-size: 15px; color: var(--tv-muted); font-weight: 600; }
+.tv-send .tv-muted { line-height: 1.6; margin-bottom: 18px; }
+
+/* ── Report shown on screen (not the PDF) ─────────────────────────────── */
+.tv-rep-head { display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 20px; padding: 18px 26px; background: var(--tv-wash); border-bottom: 2px solid var(--tv-line); }
+.tv-rep-head strong { display: block; font-size: 22px; font-weight: 800; color: var(--tv-ink);
+  text-transform: capitalize; }
+.tv-rep-head span { font-size: 14px; color: var(--tv-muted); font-family: ui-monospace, monospace; }
+.tv-rep-when { text-align: right; }
+.tv-rep-when span { display: block; font-size: 11.5px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--tv-muted); font-weight: 700; font-family: inherit; }
+.tv-rep-when em { font-style: normal; font-size: 15px; font-weight: 700; color: var(--tv-ink); }
+
+.tv-rep-table { width: 100%; border-collapse: collapse; }
+.tv-rep-table th { text-align: left; font-size: 12px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--tv-muted); font-weight: 800;
+  padding: 12px 26px; border-bottom: 2px solid var(--tv-line); background: #fff;
+  position: sticky; top: 0; }
+.tv-rep-table td { padding: 15px 26px; border-bottom: 1px solid var(--tv-line); font-size: 19px; }
+.tv-rep-table tr:nth-child(2n) td { background: #fafcff; }
+.p-name { font-weight: 700; color: var(--tv-ink); }
+.p-val { font-weight: 800; font-size: 22px; color: var(--tv-ink); white-space: nowrap; }
+.p-val b { font-size: 14px; font-weight: 800; margin-left: 6px; }
+.p-val.high { color: #b91c1c; }
+.p-val.low { color: #b45309; }
+.p-unit, .p-ref { color: var(--tv-muted); font-size: 16px; }
+
+.tv-rep-note { margin: 16px 26px 0; padding: 12px 16px; background: var(--tv-wash);
+  border-left: 4px solid var(--tv-blue); border-radius: 8px; font-size: 15px; color: var(--tv-ink); }
+.tv-rep-foot { margin: 16px 26px 0; font-size: 13px; color: var(--tv-muted); line-height: 1.6; }
+
+/* ── Loading states ───────────────────────────────────────────────────── */
+.tv-spinner {
+  width: 34px; height: 34px; border-radius: 50%; display: inline-block;
+  border: 4px solid rgba(29,78,216,.18); border-top-color: var(--tv-blue);
+  animation: spin .8s linear infinite;
+}
+.tv-spinner.big { width: 60px; height: 60px; border-width: 6px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.tv-loading { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 70px 20px; }
+.tv-loading p { margin: 0; text-align: center; display: flex; flex-direction: column; gap: 3px; }
+.tv-loading strong { font-size: 19px; font-weight: 800; color: var(--tv-ink); }
+.tv-loading span { font-size: 14.5px; color: var(--tv-muted); font-weight: 600; }
+
+/* The first paint, before the numbers and the photographs have arrived. */
+.tv-boot {
+  display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 22px;
+  background: linear-gradient(170deg, #ffffff 0%, #eef4ff 100%);
+}
+.tv-boot img { height: 96px; width: auto; }
+.tv-boot p { margin: 0; text-align: center; display: flex; flex-direction: column; gap: 5px; }
+.tv-boot strong { font-size: 24px; font-weight: 800; color: var(--tv-ink); }
+.tv-boot span { font-size: 15px; color: var(--tv-muted); font-weight: 600; }
+
+@media (prefers-reduced-motion: reduce) { .tv-spinner { animation-duration: 2s; } }

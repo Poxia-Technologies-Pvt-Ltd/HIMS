@@ -1,0 +1,140 @@
+// Built-in SOAP consultation templates for common presentations
+export const CONSULTATION_TEMPLATES = [
+  {
+    id: 'urti',
+    name: 'URTI / Common Cold',
+    icon: '🤧',
+    soap: {
+      chiefComplaints: 'Fever, cough, sore throat, runny nose, nasal congestion for ___ days',
+      history: 'Onset: acute\nProgression: gradual / sudden\nAssociated: body aches, malaise, headache\nNot associated: chest pain, breathlessness, haemoptysis\nContact history with similar illness: yes / no\nVaccination history: up to date',
+      examination: 'General: febrile, alert, oriented\nThroat: congested / erythematous / tonsils not enlarged\nNasal mucosa: congested / clear discharge\nChest: clear to auscultation bilaterally\nNo lymphadenopathy',
+      diagnosis: 'Acute upper respiratory tract infection (URTI)',
+      followUp: '',
+      icd10Codes: [{ code: 'J06.9', description: 'Acute upper respiratory infection, unspecified' }],
+    },
+    prescriptions: [
+      { medicine_name: 'Paracetamol 500mg', dosage: '500mg', frequency: 'TID', duration: '5 Days', route: 'Oral', instructions: 'After food', morning: true, afternoon: true, evening: true, night: false },
+      { medicine_name: 'Cetirizine 10mg', dosage: '10mg', frequency: 'OD', duration: '5 Days', route: 'Oral', instructions: 'At bedtime', morning: false, afternoon: false, evening: false, night: true },
+      { medicine_name: 'Ambroxol 30mg', dosage: '30mg', frequency: 'TID', duration: '5 Days', route: 'Oral', instructions: 'After food', morning: true, afternoon: true, evening: true, night: false },
+    ],
+  },
+  {
+    id: 'htn_review',
+    name: 'Hypertension Review',
+    icon: '🫀',
+    soap: {
+      chiefComplaints: 'Routine hypertension follow-up, ___ months since last visit',
+      history: 'Duration of HTN: ___ years\nCurrent medications: ___\nCompliance: good / fair / poor\nSide effects: nil / ___\nHome BP readings: ___\nAssociated: headache, dizziness, palpitations\nNot associated: chest pain, breathlessness',
+      examination: 'BP: ___/___  mmHg (both arms)\nPulse: ___ bpm, regular\nWeight: ___ kg\nHeart: S1 S2 heard, no murmur\nChest: clear\nNo pedal oedema',
+      diagnosis: 'Essential hypertension — controlled / uncontrolled',
+      followUp: '',
+      icd10Codes: [{ code: 'I10', description: 'Essential (primary) hypertension' }],
+    },
+    prescriptions: [
+      { medicine_name: 'Amlodipine 5mg', dosage: '5mg', frequency: 'OD', duration: '1 Month', route: 'Oral', instructions: 'Morning', morning: true, afternoon: false, evening: false, night: false },
+    ],
+  },
+  {
+    id: 'dm_review',
+    name: 'Diabetes Mellitus Review',
+    icon: '🩸',
+    soap: {
+      chiefComplaints: 'Routine diabetes follow-up, ___ months since last visit',
+      history: 'Duration of DM: Type ___, ___ years\nCurrent medications: ___\nCompliance: good / fair / poor\nHome glucose monitoring: ___\nHbA1c last value: ___\nSymptoms: polyuria / polydipsia / polyphagia / nil\nHypoglycaemic episodes: nil / ___',
+      examination: 'General: no pallor, no jaundice\nWeight: ___ kg, BMI: ___\nBP: ___/___  mmHg\nFoot exam: no ulcers, sensation intact / impaired\nFundi: normal / not done',
+      diagnosis: 'Type 2 diabetes mellitus — controlled / uncontrolled',
+      followUp: '',
+      icd10Codes: [{ code: 'E11.9', description: 'Type 2 diabetes mellitus without complications' }],
+    },
+    prescriptions: [
+      { medicine_name: 'Metformin 500mg', dosage: '500mg', frequency: 'BD', duration: '1 Month', route: 'Oral', instructions: 'After food', morning: true, afternoon: false, evening: true, night: false },
+    ],
+  },
+  {
+    id: 'fever_adult',
+    name: 'Fever - Adult',
+    icon: '🌡️',
+    soap: {
+      chiefComplaints: 'Fever for ___ days, temperature up to ___°F',
+      history: 'Onset: acute\nPattern: continuous / intermittent / remittent\nChills / rigors: present / absent\nAssociated: headache, body aches, cough, vomiting, diarrhoea, rash, joint pains\nNot associated: bleeding manifestations, breathlessness\nTravel history: ___\nContact: ___',
+      examination: 'Temp: ___°F, PR: ___ bpm, BP: ___\nGeneral: febrile, no rash, no jaundice, no pallor\nLymph nodes: not enlarged\nAbdomen: no organomegaly\nChest: clear\nCNS: no neck stiffness',
+      diagnosis: 'Fever — viral / bacterial / to investigate',
+      followUp: '',
+      icd10Codes: [{ code: 'R50', description: 'Fever of unknown origin (PUO)' }],
+    },
+    prescriptions: [
+      { medicine_name: 'Paracetamol 650mg', dosage: '650mg', frequency: 'TID', duration: '3 Days', route: 'Oral', instructions: 'After food, if temp >100°F', morning: true, afternoon: true, evening: true, night: false },
+      { medicine_name: 'ORS Sachet', dosage: '1 sachet', frequency: 'TID', duration: '3 Days', route: 'Oral', instructions: 'Dissolve in 1 litre water, sip throughout day', morning: true, afternoon: true, evening: true, night: false },
+    ],
+  },
+  {
+    id: 'gastroenteritis',
+    name: 'Acute Gastroenteritis',
+    icon: '🤢',
+    soap: {
+      chiefComplaints: 'Nausea, vomiting, diarrhoea for ___ days',
+      history: 'Onset: acute\nVomiting: ___ episodes / day\nDiarrhoea: ___ stools / day, watery / loose, blood / mucus present / absent\nFever: present / absent\nAbdominal pain: present / absent, site: ___\nPossible cause: food intake history — ___\nDehydration symptoms: dry mouth, decreased urination',
+      examination: 'General: mild / moderate / severe dehydration\nPulse: ___ bpm, BP: ___\nMucous membranes: dry / moist\nAbdomen: soft / tender, BS: hyperactive\nNo guarding / rigidity',
+      diagnosis: 'Acute gastroenteritis',
+      followUp: '',
+      icd10Codes: [{ code: 'A09', description: 'Gastroenteritis / diarrhoea' }],
+    },
+    prescriptions: [
+      { medicine_name: 'ORS Sachet', dosage: '1 sachet', frequency: 'After each loose stool', duration: '3 Days', route: 'Oral', instructions: 'Dissolve in 1 litre clean water', morning: true, afternoon: true, evening: true, night: false },
+      { medicine_name: 'Ondansetron 4mg', dosage: '4mg', frequency: 'TID', duration: '3 Days', route: 'Oral', instructions: '30 minutes before meals', morning: true, afternoon: true, evening: true, night: false },
+      { medicine_name: 'Metronidazole 400mg', dosage: '400mg', frequency: 'TID', duration: '5 Days', route: 'Oral', instructions: 'After food', morning: true, afternoon: true, evening: true, night: false },
+    ],
+  },
+  {
+    id: 'back_pain',
+    name: 'Low Back Pain',
+    icon: '🦴',
+    soap: {
+      chiefComplaints: 'Low back pain for ___ days / weeks',
+      history: 'Onset: acute / chronic / acute on chronic\nNature: dull aching / sharp / shooting\nRadiation: to legs / left / right / bilateral — up to ___\nAggravating: bending, lifting, prolonged sitting / standing\nRelieving: rest, analgesics\nAssociated: numbness / tingling in legs, weakness, bladder / bowel symptoms\nHistory of trauma: yes / no',
+      examination: 'Gait: normal / antalgic\nSpine: tenderness at L___ level, scoliosis present / absent\nSLR: negative / positive at ___°\nMotor: grade ___ / 5 bilaterally\nSensation: intact / impaired\nReflexes: normal / reduced at ___',
+      diagnosis: 'Low back pain — muscular / disc prolapse / spondylosis',
+      followUp: '',
+      icd10Codes: [{ code: 'M54.5', description: 'Low back pain' }],
+    },
+    prescriptions: [
+      { medicine_name: 'Diclofenac 50mg', dosage: '50mg', frequency: 'BD', duration: '5 Days', route: 'Oral', instructions: 'After food', morning: true, afternoon: false, evening: true, night: false },
+      { medicine_name: 'Thiocolchicoside 4mg', dosage: '4mg', frequency: 'BD', duration: '5 Days', route: 'Oral', instructions: 'After food', morning: true, afternoon: false, evening: true, night: false },
+      { medicine_name: 'Pantoprazole 40mg', dosage: '40mg', frequency: 'OD', duration: '5 Days', route: 'Oral', instructions: 'Before breakfast', morning: true, afternoon: false, evening: false, night: false },
+    ],
+  },
+  {
+    id: 'uti',
+    name: 'Urinary Tract Infection',
+    icon: '🫘',
+    soap: {
+      chiefComplaints: 'Burning micturition, frequency of urination for ___ days',
+      history: 'Onset: acute\nBurning: during / after micturition\nFrequency: ___ times / day\nHaematuria: present / absent\nFever: present / absent\nFlank pain: present / absent\nPrevious UTI: yes / no\nLast urine test: ___',
+      examination: 'Temp: ___°F, PR: ___, BP: ___\nGeneral: mild distress\nAbdomen: suprapubic tenderness present / absent\nCVA tenderness: present / absent (bilateral)',
+      diagnosis: 'Urinary tract infection — lower / upper (pyelonephritis)',
+      followUp: '',
+      icd10Codes: [{ code: 'N39.0', description: 'Urinary tract infection, site not specified (UTI)' }],
+    },
+    prescriptions: [
+      { medicine_name: 'Nitrofurantoin 100mg', dosage: '100mg', frequency: 'BD', duration: '7 Days', route: 'Oral', instructions: 'After food with plenty of water', morning: true, afternoon: false, evening: true, night: false },
+      { medicine_name: 'Phenazopyridine 200mg', dosage: '200mg', frequency: 'TID', duration: '2 Days', route: 'Oral', instructions: 'After food — for dysuria relief only', morning: true, afternoon: true, evening: true, night: false },
+    ],
+  },
+  {
+    id: 'asthma_review',
+    name: 'Asthma Review',
+    icon: '🫁',
+    soap: {
+      chiefComplaints: 'Asthma review — breathlessness / wheeze episodes, ___ per week',
+      history: 'Duration: ___ years\nCurrent medications: ___\nCompliance: good / fair / poor\nController use: daily / as needed\nRescue inhaler use: ___ times / week\nTriggers: dust, cold, exercise, smoke, others: ___\nNocturnal symptoms: ___ nights / week\nEmergency visits: nil / ___',
+      examination: 'SpO2: ___%, RR: ___ /min\nChest: bilateral air entry, wheeze present / absent\nNo use of accessory muscles\nNo cyanosis',
+      diagnosis: 'Bronchial asthma — mild / moderate / severe, intermittent / persistent',
+      followUp: '',
+      icd10Codes: [{ code: 'J45.9', description: 'Asthma, unspecified' }],
+    },
+    prescriptions: [
+      { medicine_name: 'Salbutamol Inhaler 100mcg', dosage: '2 puffs', frequency: 'SOS', duration: '1 Month', route: 'Inhaled', instructions: 'Use spacer. Rescue — max 4 times/day', morning: false, afternoon: false, evening: false, night: false },
+      { medicine_name: 'Budesonide 200mcg Inhaler', dosage: '1 puff', frequency: 'BD', duration: '1 Month', route: 'Inhaled', instructions: 'Rinse mouth after use', morning: true, afternoon: false, evening: true, night: false },
+    ],
+  },
+];

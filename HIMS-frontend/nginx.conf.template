@@ -1,0 +1,55 @@
+# VAPT #13/#8: don't advertise the nginx version in the Server header or on
+# auto-generated error pages (the "403 Forbidden nginx/1.31.2" banner the
+# scanner captured on a bare directory hit).
+server_tokens off;
+
+server {
+    listen 80;
+    server_name localhost;
+
+    # VAPT #25: strip the ETag response header so the exact file revision
+    # can't be fingerprinted/diffed across requests.
+    etag off;
+
+    # Baseline security headers, factored into an include file so every
+    # location block below can pull in the same set. nginx's add_header does
+    # NOT inherit into a nested block once that block declares its own add_header (e.g.
+    # the Cache-Control overrides below) — repeating literal add_header lines
+    # per-location silently dropped every header here for the `/` and hashed
+    # asset responses (VAPT #12/#13/#17/#18/#19/#21/#22 regression caught on
+    # the 2026-07-23 retest deploy). Centralizing them in an include avoids
+    # that trap recurring the next time a location needs its own add_header.
+    include /etc/nginx/conf.d/security-headers.inc;
+
+    # VAPT #5/#10 (Browser Refresh Attack / Cache Header Not Implemented):
+    # the SPA shell renders whatever page state was in memory (dashboard,
+    # settings, etc.) at logout time, so it must never be served from cache —
+    # every navigation/back/refresh has to re-run the RequireAuth check.
+    location = /index.html {
+        include /etc/nginx/conf.d/security-headers.inc;
+        add_header Cache-Control "no-store, no-cache, must-revalidate, private" always;
+        add_header Pragma "no-cache" always;
+        root   /usr/share/nginx/html;
+    }
+
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Hashed build assets (JS/CSS/images) are safe to cache aggressively —
+    # a new deploy ships a new filename, so staleness isn't a risk.
+    location ~* \.(?:js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|ico)$ {
+        include /etc/nginx/conf.d/security-headers.inc;
+        root   /usr/share/nginx/html;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    error_page   403 404        /index.html;
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        include /etc/nginx/conf.d/security-headers.inc;
+        root   /usr/share/nginx/html;
+    }
+}

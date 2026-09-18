@@ -1,0 +1,34 @@
+{
+  "protocol_type": "ASTM",
+  "frame_structure": {
+    "note": "STX <frame#> <record> CR ETX <2-hex-checksum> CR LF, ENQ/ACK handshake, EOT ends transmission. Not SOF/EOF binary framing — serialManager.js's ASTM branch parses this directly, this block is documentation only."
+  },
+  "tests": [
+    { "name": "WBC",    "label": "White Blood Cell Count",  "unit": "10³/µL", "ref_range": "4.0-11.0" },
+    { "name": "RBC",    "label": "Red Blood Cell Count",    "unit": "10⁶/µL", "ref_range": "3.76-5.70" },
+    { "name": "HGB",    "label": "Hemoglobin",              "unit": "g/dL",   "ref_range": "12.0-18.0" },
+    { "name": "HCT",    "label": "Hematocrit",              "unit": "%",      "ref_range": "33.5-52.0" },
+    { "name": "MCV",    "label": "Mean Corpuscular Volume",  "unit": "fL",    "ref_range": "80.0-100" },
+    { "name": "MCH",    "label": "Mean Corpuscular Hemoglobin", "unit": "pg", "ref_range": "28.0-32.0" },
+    { "name": "MCHC",   "label": "Mean Corpuscular Hemoglobin Concentration", "unit": "g/dL", "ref_range": "31.0-35.0" },
+    { "name": "PLT",    "label": "Platelet Count",          "unit": "10³/µL", "ref_range": "150-450" },
+    { "name": "NE",     "label": "Neutrophil Count",        "unit": "10³/µL", "ref_range": "1.1-7.0" },
+    { "name": "LY",     "label": "Lymphocyte Count",        "unit": "10³/µL", "ref_range": "0.7-5.1" },
+    { "name": "EO",     "label": "Eosinophil Count",        "unit": "10³/µL", "ref_range": "0.0-0.9" },
+    { "name": "MO",     "label": "Monocyte Count",          "unit": "10³/µL", "ref_range": "0.0-0.9" },
+    { "name": "BA",     "label": "Basophil Count",          "unit": "10³/µL", "ref_range": "0.0-0.2" },
+    { "name": "IG",     "label": "Immature Granulocyte Count", "unit": "10³/µL", "ref_range": "" },
+    { "name": "NE%",    "label": "Neutrophil %",            "unit": "%",      "ref_range": "28.0-78.0" },
+    { "name": "LY%",    "label": "Lymphocyte %",            "unit": "%",      "ref_range": "17.0-57.0" },
+    { "name": "EO%",    "label": "Eosinophil %",            "unit": "%",      "ref_range": "0.0-10.0" },
+    { "name": "MO%",    "label": "Monocyte %",              "unit": "%",      "ref_range": "0.0-10.0" },
+    { "name": "BA%",    "label": "Basophil %",               "unit": "%",     "ref_range": "0.0-2.0" },
+    { "name": "IG%",    "label": "Immature Granulocyte %",  "unit": "%",      "ref_range": "" },
+    { "name": "RDW-CV", "label": "Red Cell Distribution Width CV", "unit": "%", "ref_range": "11.6-14.0" },
+    { "name": "RDW-SD", "label": "Red Cell Distribution Width SD", "unit": "fL", "ref_range": "39.0-46.0" },
+    { "name": "MPV",    "label": "Mean Platelet Volume",    "unit": "fL",     "ref_range": "7.0-11.0" },
+    { "name": "PCT",    "label": "Plateletcrit",            "unit": "%",      "ref_range": "0.16-0.33" },
+    { "name": "PDW",    "label": "Platelet Distribution Width", "unit": "%",  "ref_range": "15.0-17.0" }
+  ],
+  "note": "Full ASTM E1394 CBC panel for NIHON KOHDEN CelltacEs. Reference ranges match the values used in the reference client (celltac.py) — confirm against the analyzer's own configured ranges before relying on them clinically."
+}

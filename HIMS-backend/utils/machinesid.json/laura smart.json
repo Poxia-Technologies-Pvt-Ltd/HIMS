@@ -1,0 +1,9 @@
+{
+  "protocol": "TEXT",
+  "baudRate": 19200,
+  "dataBits": 8,
+  "stopBits": 1,
+  "parity": "none",
+  "flowControl": false,
+  "handshake": "none"
+}

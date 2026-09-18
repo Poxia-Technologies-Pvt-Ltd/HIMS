@@ -1,0 +1,53 @@
+# Included (via `include /etc/nginx/conf.d/security-headers.inc;`) into every
+# location block that also declares its own add_header — nginx does not
+# inherit add_header from a parent context once a block sets any add_header
+# of its own, so this must be included explicitly rather than relied on from
+# the server block. See nginx.conf.template for the locations that use it.
+#
+# Named .inc (not .conf) deliberately: nginx.conf's default
+# `include /etc/nginx/conf.d/*.conf;` would otherwise load this a second
+# time as a bare http-context file alongside default.conf.
+
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+# VAPT #22: full CSP. default-src is 'none' rather than 'self' — every
+# resource type this app actually loads (script/style/img/font/connect/
+# frame/object) is listed explicitly below, and there's no manifest, service
+# worker, or media-src usage (the one <video> element uses getUserMedia's
+# MediaStream via srcObject, not a src URL, so it isn't gated by media-src)
+# to fall back on default-src for. script-src has no 'unsafe-inline' — the
+# one inline script this app needed (the Google Translate init callback) was
+# moved to /translate-init.js so it qualifies as same-origin ('self').
+# style-src keeps 'unsafe-inline' because React's `style` prop and the
+# Translate widget both set inline style attributes at runtime; there's no
+# same-origin-only way to allowlist those short of a nonce per render, which
+# a static SPA build can't generate. style-src and img-src both also need
+# fonts.gstatic.com, not just www.gstatic.com — the Translate widget's own
+# stylesheet and its language-icon SVGs are served from that separate
+# subdomain, and browsers don't treat allowing one gstatic host as covering
+# the other. connect-src is templated ($CSP_CONNECT_SRC, set via the
+# container's env, defaults to same-origin only) because the backend API
+# lives on a different origin than this frontend in production — see
+# README/Dockerfile for how to set it. frame-src also needs blob: — the lab
+# report's Print button fetches the PDF itself and loads it into a hidden
+# <iframe src="blob:..."> to print (so it prints the real file, not a
+# re-rendered HTML approximation); without blob: here the iframe never
+# loads and Print silently does nothing. style-src and font-src also need
+# fonts.googleapis.com/fonts.gstatic.com — the public PatientUpload page
+# pulls Space Grotesk/IBM Plex Sans via a Google Fonts @import; without both
+# hosts allowed the stylesheet fetch (style-src) or the font files it
+# references (font-src) get silently blocked and the page just falls back
+# to system fonts with no visible error.
+add_header Content-Security-Policy "default-src 'none'; script-src 'self' https://translate.google.com https://translate.googleapis.com; style-src 'self' 'unsafe-inline' https://www.gstatic.com https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: https://www.gstatic.com https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://translate.googleapis.com ${CSP_CONNECT_SRC}; frame-src https://translate.google.com blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';" always;
+# Legacy header the scanner still checks for; modern browsers ignore it
+# (some even treat "1" as an XSS vector), but it's inert here either way.
+add_header X-XSS-Protection "1; mode=block" always;
+# Only takes effect once served over HTTPS (the production domain) —
+# harmless no-op over plain HTTP, which is how the TLS-terminating proxy
+# in front of this container reaches it.
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+# camera/microphone stay same-origin-only for AmbientScribe (mic) and the
+# patient-photo capture flow (camera); everything else this app doesn't use
+# is denied outright.
+add_header Permissions-Policy "camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()" always;

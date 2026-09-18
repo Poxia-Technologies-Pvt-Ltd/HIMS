@@ -1,0 +1,23 @@
+{
+  "protocol_type": "TEXT",
+  "frame_structure": {
+    "start_marker": "Date.*time:",
+    "end_marker": "Li",
+    "esc_bytes": ["1b00", "1b"],
+    "header_patterns": {
+      "date_time": "Date.*time:\\s*(.*)",
+      "patient_name": "Name\\s*:\\s*(.*)",
+      "patient_id": "Patient ID\\s*:\\s*(.*)"
+    }
+  },
+  "tests": [
+    { "name": "Na",  "label": "Sodium",           "unit": "mmol/L", "ref_range": "135 - 145" },
+    { "name": "K",   "label": "Potassium",        "unit": "mmol/L", "ref_range": "3.5 - 5.5" },
+    { "name": "iCa", "label": "Ionized Calcium",  "unit": "mmol/L", "ref_range": "1.10 - 1.35" },
+    { "name": "Cl",  "label": "Chloride",          "unit": "mmol/L", "ref_range": "98 - 107" },
+    { "name": "pH",  "label": "pH",                "unit": "",       "ref_range": "7.35 - 7.45" },
+    { "name": "Li",  "label": "Lithium",           "unit": "mmol/L", "ref_range": "NA" }
+  ],
+  "value_pattern": "=",
+  "note": "Plain-text electrolyte protocol for HDC-Lyte Plus. Li is the last parameter — triggers report completion."
+}

@@ -1,0 +1,37 @@
+--- /Users/stevejeraldicloud.com/Desktop/HMIS/LIS-Agent/main/serialManager.js
++++ /Users/stevejeraldicloud.com/Desktop/HMIS/LIS-Agent/main/serialManager.js
+@@ -820,8 +820,8 @@
+   }
+ 
+   if (!sessionKey) {
+-    console.warn(`⚠️  Text report has no Patient ID, and no manual context exists — skipping. (Model: ${machine.model})`);
+-    return;
++    console.warn(`⚠️  Text report has no Patient ID, and no manual context exists. Generating unmapped session key...`);
++    sessionKey = `UNMAPPED-${Date.now().toString().slice(-6)}`;
+   }
+ 
+   console.log(`🔍 ${machine.model} — Target ID: ${sessionKey}`);
+@@ -851,8 +851,21 @@
+     }
+ 
+     if (!test) {
+-      console.log(`⚠️  No active worklist entry for Target ID "${sessionKey}". Ignoring report.`);
+-      return;
++      console.log(`🆕 Requesting auto-creation of worklist entry for unsolicited Target ID "${sessionKey}"...`);
++      try {
++        const createRes = await axios.post(`${API_BASE}/api/lab/unsolicited-worklist`, {
++          sample_id: sessionKey,
++          patient_name: parsed.patient_name || '',
++          test_name: `Unmapped ${machine.model} Test`
++        }, { timeout: 5000 });
++        if (createRes.data.success && createRes.data.test) {
++          test = createRes.data.test;
++          console.log(`✅ Auto-created worklist entry for "${sessionKey}"`);
++        }
++      } catch (err) {
++        console.error(`❌ Failed to auto-create worklist entry for "${sessionKey}": ${err.message}`);
++        return;
++      }
+     }
+ 
+     let allParams = [];

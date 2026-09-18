@@ -1,0 +1,31 @@
+{
+  "protocol_type": "HL7",
+  "frame_structure": {
+    "start_sequence": "MSH",
+    "segment_separator": "\r",
+    "field_separator": "|",
+    "component_separator": "^"
+  },
+  "tests": [
+    {"name": "WBC", "id": "6690-2", "label": "WBC"},
+    {"name": "Lymph#", "id": "731-0", "label": "Lymph#"},
+    {"name": "Mid#", "id": "10027", "label": "Mid#"},
+    {"name": "Gran#", "id": "10028", "label": "Gran#"},
+    {"name": "Lymph%", "id": "736-9", "label": "Lymph%"},
+    {"name": "Mid%", "id": "10029", "label": "Mid%"},
+    {"name": "Gran%", "id": "10030", "label": "Gran%"},
+    {"name": "RBC", "id": "789-8", "label": "RBC"},
+    {"name": "HGB", "id": "718-7", "label": "HGB"},
+    {"name": "HCT", "id": "4544-3", "label": "HCT"},
+    {"name": "MCV", "id": "mcv", "label": "MCV"},
+    {"name": "MCH", "id": "785-6", "label": "MCH"},
+    {"name": "MCHC", "id": "786-4", "label": "MCHC"},
+    {"name": "RDW-CV", "id": "788-0", "label": "RDW-CV"},
+    {"name": "RDW-SD", "id": "70-5", "label": "RDW-SD"},
+    {"name": "PLT", "id": "777-3", "label": "PLT"},
+    {"name": "MPV", "id": "32623-1", "label": "MPV"},
+    {"name": "PDW", "id": "32207-3", "label": "PDW"},
+    {"name": "PCT", "id": "10002", "label": "PCT"}
+  ],
+  "note": "HL7 3-Part Hematology Protocol for Merilyzer CelQuant Edge"
+}

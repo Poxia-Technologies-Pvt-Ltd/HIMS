@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LIS-Agent Workflow Poster</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', Arial, sans-serif;
+      background: #f0f0f0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 20px;
+    }
+
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      background: linear-gradient(160deg, #0f0c29, #302b63, #24243e);
+      padding: 14mm 14mm 12mm 14mm;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* decorative blobs */
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.18;
+      pointer-events: none;
+    }
+    .blob-1 { width: 200px; height: 200px; background: #ff6ec7; top: -40px; left: -60px; }
+    .blob-2 { width: 250px; height: 250px; background: #00d2ff; top: 60px; right: -80px; }
+    .blob-3 { width: 180px; height: 180px; background: #f9ca24; bottom: 60px; left: -50px; }
+    .blob-4 { width: 220px; height: 220px; background: #6c5ce7; bottom: -40px; right: -60px; }
+
+    /* header */
+    .header {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6mm;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #00d2ff;
+      box-shadow: 0 0 10px #00d2ff;
+    }
+    .brand-name {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #00d2ff;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .badge {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 8pt;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: 1px;
+    }
+
+    /* title block */
+    .title-block {
+      text-align: center;
+      margin-bottom: 8mm;
+    }
+    .title-block h1 {
+      font-size: 26pt;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }
+    .title-block h1 span {
+      background: linear-gradient(90deg, #00d2ff, #ff6ec7, #f9ca24);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle {
+      font-size: 10pt;
+      color: rgba(255,255,255,0.45);
+      margin-top: 4px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    /* divider */
+    .divider {
+      width: 60mm;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #00d2ff, #ff6ec7, transparent);
+      margin: 4mm auto 6mm auto;
+      border-radius: 2px;
+    }
+
+    /* steps */
+    .steps {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+
+    .step {
+      width: 154mm;
+      border-radius: 14px;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      position: relative;
+      border: 1.5px solid rgba(255,255,255,0.12);
+    }
+
+    .step-num {
+      min-width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13pt;
+      font-weight: 900;
+      color: #fff;
+      flex-shrink: 0;
+    }
+
+    .step-body { flex: 1; }
+    .step-title {
+      font-size: 13pt;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 1.2;
+    }
+    .step-desc {
+      font-size: 8.5pt;
+      color: rgba(255,255,255,0.55);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+
+    .step-icon {
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    /* step colors */
+    .s1 { background: linear-gradient(135deg, rgba(0,210,255,0.18), rgba(0,210,255,0.06)); }
+    .s1 .step-num { background: linear-gradient(135deg, #00d2ff, #0099cc); }
+
+    .s2 { background: linear-gradient(135deg, rgba(108,92,231,0.22), rgba(108,92,231,0.07)); }
+    .s2 .step-num { background: linear-gradient(135deg, #6c5ce7, #4834d4); }
+
+    .s3 { background: linear-gradient(135deg, rgba(255,110,199,0.20), rgba(255,110,199,0.06)); }
+    .s3 .step-num { background: linear-gradient(135deg, #ff6ec7, #cc44a0); }
+
+    .s4 { background: linear-gradient(135deg, rgba(249,202,36,0.20), rgba(249,202,36,0.06)); }
+    .s4 .step-num { background: linear-gradient(135deg, #f9ca24, #c0a020); }
+
+    .s5 { background: linear-gradient(135deg, rgba(85,239,196,0.20), rgba(85,239,196,0.06)); }
+    .s5 .step-num { background: linear-gradient(135deg, #55efc4, #00b894); }
+
+    .s6 { background: linear-gradient(135deg, rgba(253,121,168,0.20), rgba(253,121,168,0.06)); }
+    .s6 .step-num { background: linear-gradient(135deg, #fd79a8, #e84393); }
+
+    .s7 { background: linear-gradient(135deg, rgba(116,185,255,0.22), rgba(116,185,255,0.07)); }
+    .s7 .step-num { background: linear-gradient(135deg, #74b9ff, #0984e3); }
+
+    .s8 { background: linear-gradient(135deg, rgba(250,177,160,0.22), rgba(250,177,160,0.07)); }
+    .s8 .step-num { background: linear-gradient(135deg, #ffeaa7, #fdcb6e); }
+
+    /* arrow between steps */
+    .arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 2px 0;
+    }
+    .arrow-line {
+      width: 2px;
+      height: 10px;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.3), rgba(255,255,255,0.1));
+    }
+    .arrow-head {
+      width: 0; height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 9px solid rgba(255,255,255,0.35);
+    }
+
+    /* footer */
+    .footer {
+      margin-top: auto;
+      padding-top: 6mm;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .footer-left {
+      font-size: 7.5pt;
+      color: rgba(255,255,255,0.3);
+      line-height: 1.5;
+    }
+    .footer-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .powered {
+      font-size: 7pt;
+      color: rgba(255,255,255,0.25);
+      letter-spacing: 1px;
+    }
+    .poxia {
+      font-size: 8pt;
+      font-weight: 700;
+      color: rgba(0,210,255,0.6);
+      letter-spacing: 1px;
+    }
+
+    @media print {
+      @page { size: A4 portrait; margin: 0; }
+      body { background: none; padding: 0; }
+      .page { width: 210mm; min-height: 297mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+    <div class="blob blob-4"></div>
+
+    <div class="header">
+      <div class="brand">
+        <div class="brand-dot"></div>
+        <span class="brand-name">Karnataka LIS Agent</span>
+      </div>
+      <div class="badge">LAB QUICK GUIDE</div>
+    </div>
+
+    <div class="title-block">
+      <h1>FOR RUNNING <span>A SAMPLE</span></h1>
+      <div class="subtitle">Step-by-step workflow for lab technicians</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="steps">
+
+      <div class="step s1">
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-title">Open LIS-Agent App</div>
+          <div class="step-desc">Launch the app — it auto-connects to all configured analyzers</div>
+        </div>
+        <div class="step-icon">💻</div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+      <div class="step s2">
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-title">Go to Worklist</div>
+          <div class="step-desc">View all pending tests assigned by the doctor</div>
+        </div>
+        <div class="step-icon">📋</div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+      <div class="step s3">
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-title">Find the Patient Sample</div>
+          <div class="step-desc">Search by name, sample ID, or scan barcode label</div>
+        </div>
+        <div class="step-icon">🔍</div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+      <div class="step s4">
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-title">Click "Run Test"</div>
+          <div class="step-desc">Links the next analyzer result to this sample automatically</div>
+        </div>
+        <div class="step-icon">▶️</div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+      <div class="step s5">
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-title">Load Sample on Analyzer</div>
+          <div class="step-desc">Place the tube, aspirate, and press the start / aspiration button</div>
+        </div>
+        <div class="step-icon">🧪</div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+      <div class="step s6">
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-title">Wait — Results Auto-Upload</div>
+          <div class="step-desc">LIS-Agent captures result via serial/TCP and sends to cloud</div>
+        </div>
+        <div class="step-icon">⏳</div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+      <div class="step s7">
+        <div class="step-num">7</div>
+        <div class="step-body">
+          <div class="step-title">Verify Results</div>
+          <div class="step-desc">Doctor reviews values, edits if needed, then approves</div>
+        </div>
+        <div class="step-icon">✅</div>
+      </div>
+
+      <div class="arrow"><div class="arrow-line"></div><div class="arrow-head"></div></div>
+
+      <div class="step s8">
+        <div class="step-num">8</div>
+        <div class="step-body">
+          <div class="step-title">Print / Download Report</div>
+          <div class="step-desc">Finalized PDF report is ready to share with the patient</div>
+        </div>
+        <div class="step-icon">🖨️</div>
+      </div>
+
+    </div>
+
+    <div class="footer">
+      <div class="footer-left">
+        Keep this app running at all times.<br/>
+        Results upload automatically — no manual sync needed.
+      </div>
+      <div class="footer-right">
+        <span class="powered">Powered by</span>
+        <span class="poxia">Meril Life Sciences</span>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

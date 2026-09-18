@@ -1,0 +1,495 @@
+/* ============================================================
+   ScheduleDutyModal.css
+   All selectors are tightly namespaced (sdm- / ss-) so they
+   never clash with the rest of the app.
+   ============================================================ */
+
+/* ── Overlay ─────────────────────────────────────────────── */
+.sdm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  background: rgba(10, 20, 40, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: sdm-overlay-in 0.22s ease;
+}
+
+@keyframes sdm-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Modal box ───────────────────────────────────────────── */
+.sdm-modal {
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.06),
+    0 8px 24px rgba(0,0,0,0.10),
+    0 32px 64px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  animation: sdm-modal-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  /* NO overflow:hidden — would clip portal dropdowns */
+}
+
+@keyframes sdm-modal-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+.sdm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px 18px;
+  border-bottom: 1px solid #e8edf3;
+  background: linear-gradient(to bottom, #fafbfd, #f7f9fc);
+  border-radius: 16px 16px 0 0;
+  flex-shrink: 0;
+}
+
+.sdm-header-accent {
+  width: 4px;
+  height: 22px;
+  background: linear-gradient(180deg, #3b82f6 0%, #6366f1 100%);
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.sdm-title {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.3px;
+}
+
+.sdm-close {
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.2s;
+  flex-shrink: 0;
+}
+
+.sdm-close:hover {
+  background: #fee2e2;
+  color: #dc2626;
+  transform: rotate(90deg);
+}
+
+/* ── Body ────────────────────────────────────────────────── */
+.sdm-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  /* 
+    IMPORTANT: Do NOT use overflow:hidden or overflow:auto here.
+    The portal dropdowns live in <body> so scrolling is handled 
+    by the overlay, not this element.
+  */
+}
+
+/* ── Error banner ────────────────────────────────────────── */
+.sdm-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #dc2626;
+  font-weight: 500;
+}
+
+/* ── Field ───────────────────────────────────────────────── */
+.sdm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sdm-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+}
+
+.sdm-required {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.sdm-optional {
+  color: #94a3b8;
+  font-weight: 400;
+  text-transform: none;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+/* ── Base input ──────────────────────────────────────────── */
+.sdm-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 13px;
+  font-size: 14px;
+  font-family: inherit;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sdm-input:hover:not(:focus) {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+.sdm-input:focus {
+  border-color: #3b82f6;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.14);
+}
+
+.sdm-textarea {
+  resize: vertical;
+  min-height: 74px;
+  line-height: 1.55;
+}
+
+/* ── Input with icon ─────────────────────────────────────── */
+.sdm-input-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sdm-input-icon svg {
+  position: absolute;
+  left: 12px;
+  color: #94a3b8;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.sdm-input-padded {
+  padding-left: 36px;
+}
+
+/* ── Time row ────────────────────────────────────────────── */
+.sdm-time-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+.sdm-time-divider {
+  font-size: 18px;
+  color: #94a3b8;
+  padding-bottom: 11px;
+  text-align: center;
+  line-height: 1;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+.sdm-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid #e8edf3;
+  background: linear-gradient(to bottom, #f7f9fc, #f3f6fa);
+  border-radius: 0 0 16px 16px;
+  flex-shrink: 0;
+}
+
+.sdm-btn-cancel {
+  padding: 9px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #475569;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.18s;
+  font-family: inherit;
+}
+
+.sdm-btn-cancel:hover {
+  border-color: #cbd5e1;
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+.sdm-btn-submit {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 22px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.18s;
+  font-family: inherit;
+  letter-spacing: 0.1px;
+}
+
+.sdm-btn-submit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(59,130,246,0.38);
+}
+
+.sdm-btn-submit:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* ============================================================
+   PORTAL SEARCHABLE SELECT  (ss- prefix)
+   Rendered into <body> — completely independent of modal DOM
+   ============================================================ */
+
+/* Trigger button */
+.ss-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 13px;
+  min-height: 42px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  user-select: none;
+}
+
+.ss-trigger:hover:not(.ss-open):not(.ss-disabled) {
+  border-color: #cbd5e1;
+  background: #ffffff;
+}
+
+.ss-trigger.ss-open {
+  border-color: #3b82f6;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.14);
+}
+
+.ss-trigger.ss-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.ss-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+  font-size: 14px;
+  text-align: left;
+}
+
+.ss-placeholder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #94a3b8;
+  font-size: 14px;
+  text-align: left;
+}
+
+.ss-chevron {
+  flex-shrink: 0;
+  color: #94a3b8;
+  transition: transform 0.2s;
+}
+
+.ss-chevron-up {
+  transform: rotate(180deg);
+}
+
+/* 
+  Portal dropdown — fixed position, always on top of everything 
+*/
+.ss-dropdown {
+  position: absolute; /* controlled by inline style top/left from JS */
+  z-index: 9999;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow:
+    0 4px 8px rgba(0,0,0,0.06),
+    0 12px 32px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 260px;
+  animation: ss-drop-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ss-drop-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Search row */
+.ss-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fafbfc;
+  flex-shrink: 0;
+}
+
+.ss-search-row svg {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.ss-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: #0f172a;
+  font-family: inherit;
+  padding: 0;
+}
+
+.ss-search-input::placeholder {
+  color: #cbd5e1;
+}
+
+/* Options */
+.ss-options {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.ss-option {
+  padding: 9px 14px;
+  font-size: 13.5px;
+  color: #1e293b;
+  cursor: pointer;
+  transition: background 0.12s;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ss-option:hover {
+  background: #f0f6ff;
+}
+
+.ss-option-selected {
+  background: rgba(59,130,246,0.08);
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.ss-option-selected:hover {
+  background: rgba(59,130,246,0.14);
+}
+
+.ss-no-results {
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 13px;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 540px) {
+  .sdm-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .sdm-modal {
+    border-radius: 18px 18px 0 0;
+    max-height: 95dvh;
+  }
+
+  .sdm-body {
+    padding: 20px 16px;
+  }
+
+  .sdm-header,
+  .sdm-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .sdm-time-row {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .sdm-time-divider {
+    display: none;
+  }
+
+  .sdm-footer {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .sdm-btn-cancel,
+  .sdm-btn-submit {
+    width: 100%;
+    justify-content: center;
+  }
+}

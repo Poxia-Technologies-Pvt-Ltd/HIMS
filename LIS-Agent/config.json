@@ -1,0 +1,8 @@
+[
+  {
+    "name": "12",
+    "port": "COM1",
+    "baud": 9600,
+    "server": "https://ka-lims.poxiatechnologies.com/api/lab/save-test-results"
+  }
+]

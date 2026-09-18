@@ -1,0 +1,732 @@
+.onboarding-container {
+  min-height: 100vh;
+  background: #0f172a;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+  position: relative;
+}
+
+.language-selector {
+  position: absolute;
+  top: 40px;
+  right: 40px;
+  display: flex;
+  gap: 12px;
+  z-index: 10;
+}
+
+.lang-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.lang-btn.active {
+  background: #38bdf8;
+  border-color: #38bdf8;
+  font-weight: bold;
+}
+
+.kyro-orb-container {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 40px;
+}
+
+.kyro-orb {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #7dd3fc, #0284c7);
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.4);
+  transition: all 0.1s ease-in-out;
+}
+
+.kyro-orb.speaking {
+  animation: pulse-orb 1s infinite alternate;
+}
+
+.kyro-ring {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  border: 2px solid rgba(56, 189, 248, 0.3);
+  opacity: 0;
+}
+
+.kyro-orb.speaking + .kyro-ring {
+  animation: ripple 1.5s infinite linear;
+}
+
+@keyframes pulse-orb {
+  0% { transform: scale(1); box-shadow: 0 0 40px rgba(56, 189, 248, 0.4); }
+  100% { transform: scale(1.15); box-shadow: 0 0 80px rgba(56, 189, 248, 0.8); }
+}
+
+@keyframes ripple {
+  0% { transform: scale(0.8); opacity: 1; border-width: 4px; }
+  100% { transform: scale(1.5); opacity: 0; border-width: 1px; }
+}
+
+.subtitle {
+  font-size: 24px;
+  font-weight: 300;
+  text-align: center;
+  max-width: 600px;
+  line-height: 1.5;
+  margin-bottom: 40px;
+  color: #e2e8f0;
+}
+
+.analyzer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  max-width: 900px;
+  width: 100%;
+  padding: 20px;
+}
+
+.analyzer-card {
+  background: rgba(30, 41, 59, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.analyzer-card:hover {
+  transform: translateY(-5px);
+  background: rgba(30, 41, 59, 1);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.analyzer-card.selected {
+  background: rgba(14, 165, 233, 0.2);
+  border-color: #38bdf8;
+  box-shadow: 0 10px 25px rgba(14, 165, 233, 0.2);
+}
+
+.brand-badge {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  color: #94a3b8;
+}
+
+.model-name {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.start-btn {
+  margin-top: 40px;
+  padding: 16px 48px;
+  font-size: 18px;
+  font-weight: bold;
+  background: #38bdf8;
+  color: #0f172a;
+  border: none;
+  border-radius: 30px;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(56, 189, 248, 0.3);
+  transition: all 0.3s;
+}
+
+.start-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 30px rgba(56, 189, 248, 0.5);
+  background: #7dd3fc;
+}
+
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(30, 41, 59, 0.8);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.queue-item:hover {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: #38bdf8;
+  transform: translateX(10px);
+}
+
+/* ── Layout ─────────────────────────────────────── */
+.kyro-setup-container {
+  font-family: 'Inter', sans-serif;
+  background-color: #ffffff;
+  color: #1e293b;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────── */
+.kyro-header {
+  background-color: #1b5cb4;
+  padding: 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+  color: #ffffff;
+  position: relative;
+}
+
+.kyro-setup-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.kyro-main-title {
+  font-size: 28px;
+  font-weight: 600;
+  margin: 0 0 10px 0;
+  color: #ffffff;
+}
+
+.kyro-back-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 120px;
+}
+
+.kyro-back-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Orb ─────────────────────────────────────────── */
+.kyro-orb-wrapper {
+  position: absolute;
+  top: 15px;
+  right: 40px;
+  transform: scale(0.6);
+  transform-origin: top right;
+}
+
+.kyro-orb-container {
+  position: relative;
+  height: 100px;
+}
+
+/* ── Progress Steps ──────────────────────────────── */
+.kyro-progress-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 700px;
+  margin: 0 auto;
+  width: 100%;
+  position: relative;
+}
+
+.kyro-step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 2;
+  flex: 1;
+  cursor: pointer;
+}
+
+.kyro-step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: #fff;
+  transition: all 0.3s ease;
+}
+
+.kyro-step-circle.active {
+  background: #1b5cb4;
+  border: 2px solid #ffffff;
+}
+
+.kyro-step-circle.completed {
+  background: #ffffff;
+  color: #1b5cb4;
+}
+
+.kyro-step-label {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.9;
+  color: #ffffff;
+}
+
+.kyro-step-line-container {
+  position: absolute;
+  top: 16px;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  z-index: 1;
+}
+
+.kyro-step-line-fill {
+  height: 100%;
+  background: #ffffff;
+  transition: width 0.4s ease;
+}
+
+/* ── Content Body ────────────────────────────────── */
+.kyro-content-body {
+  background-color: #f8fafc;
+  flex: 1;
+  padding: 30px 40px;
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── Image Column ────────────────────────────────── */
+.kyro-image-column {
+  flex: 1.2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  min-width: 0;
+}
+
+.kyro-image-card {
+  background-color: #ffffff;
+  width: 100%;
+  border-radius: 15px;
+  padding: 20px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 300px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e2e8f0;
+  overflow-y: auto;
+}
+
+.kyro-step-badge {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background-color: #1b5cb4;
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  z-index: 2;
+}
+
+.kyro-main-img {
+  max-width: 100%;
+  max-height: 350px;
+  object-fit: contain;
+  margin: auto;
+}
+
+.kyro-image-subtext {
+  text-align: center;
+}
+
+.kyro-image-subtext h3 {
+  font-size: 18px;
+  margin: 0 0 6px 0;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.kyro-image-subtext p {
+  font-size: 14px;
+  color: #a0a0a0;
+  margin: 0;
+}
+
+/* ── Details Column ──────────────────────────────── */
+.kyro-details-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  min-width: 0;
+}
+
+.kyro-details-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+  color: #1e293b;
+}
+
+.kyro-details-desc {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #64748b;
+  margin: 0;
+}
+
+.kyro-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kyro-check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.kyro-check-circle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #1b5cb4;
+  color: #ffffff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.kyro-tip-box {
+  background-color: #f0f7ff;
+  color: #1b5cb4;
+  padding: 15px;
+  border-radius: 10px;
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  border: 1px solid #dbeafe;
+}
+
+.kyro-tip-icon {
+  font-size: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Footer ──────────────────────────────────────── */
+.kyro-footer {
+  background-color: #ffffff;
+  padding: 15px 40px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  border-top: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.kyro-nav-buttons {
+  display: flex;
+  gap: 12px;
+}
+
+.kyro-nav-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  padding: 8px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.kyro-nav-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.kyro-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.kyro-nav-btn.next {
+  background: #1b5cb4;
+  border-color: #1b5cb4;
+  color: #ffffff;
+}
+
+.kyro-nav-btn.next:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.kyro-nav-btn.complete {
+  background: #22c55e;
+  border-color: #22c55e;
+  color: #ffffff;
+}
+
+/* ── Bottom Progress Bar ─────────────────────────── */
+.kyro-bottom-bar {
+  height: 3px;
+  background: #f1f5f9;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.kyro-bottom-bar-fill {
+  height: 100%;
+  background-color: #1b5cb4;
+  transition: width 0.4s ease;
+}
+
+/* ── Step 4: Config Form ─────────────────────────── */
+.kyro-config-wrap {
+  width: 100%;
+  padding: 4px 8px;
+}
+
+.kyro-bubble {
+  background: #E6F1FB;
+  border-radius: 16px 16px 16px 4px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.kyro-bubble-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #185FA5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.kyro-bubble-text {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #0C447C;
+  margin: 0;
+}
+
+.kyro-port-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: #64748b;
+  transition: all 0.3s ease;
+}
+
+.kyro-port-status.found {
+  border-color: #C0DD97;
+  background: #EAF3DE;
+  color: #27500A;
+}
+
+.kyro-port-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+  flex-shrink: 0;
+}
+
+.kyro-port-dot.found {
+  background: #639922;
+  animation: kyroPulse 1.2s infinite;
+}
+
+.kyro-rescan-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: #185FA5;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.kyro-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.kyro-form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.kyro-form-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.kyro-serial-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: 'Inter', monospace;
+}
+
+.kyro-serial-input:focus {
+  border-color: #185FA5;
+  box-shadow: 0 0 0 3px rgba(24, 95, 165, 0.12);
+}
+
+.kyro-form-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.2s;
+  background: #ffffff;
+}
+
+.kyro-form-select:focus {
+  border-color: #185FA5;
+}
+
+.kyro-sync-btn {
+  width: 100%;
+  padding: 12px;
+  background: #10b981;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 4px;
+}
+
+.kyro-sync-btn:hover:not(:disabled) {
+  background: #059669;
+}
+
+.kyro-sync-btn:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* ── Success State ────────────────────────────────── */
+.kyro-success-state {
+  text-align: center;
+  padding: 40px 20px;
+  width: 100%;
+}
+
+.kyro-success-icon {
+  font-size: 52px;
+  color: #10b981;
+  margin-bottom: 16px;
+}
+
+.kyro-success-title {
+  margin: 0 0 8px;
+  color: #1e293b;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.kyro-success-desc {
+  color: #64748b;
+  font-size: 14px;
+}
+
+/* ── Animation ───────────────────────────────────── */
+@keyframes kyroPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.8); }
+}

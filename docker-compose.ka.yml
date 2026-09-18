@@ -1,0 +1,111 @@
+# Karnataka LIMS (ka-lims.poxiatechnologies.com)
+# Deployed alongside ~/LIMS and ~/JH-LIMS. Container names, volume and host
+# ports are all distinct so none of the three ever collide. MySQL is
+# deliberately NOT published to the host, same reasoning as jh-lims: it only
+# ever needs to be reachable from the backend on the compose network.
+# All credentials come from .env.ka (chmod 600, never committed).
+#
+# CDAC e-Sushrut and CARE HMIS are not wired up for this deployment (the env
+# vars below are intentionally blank in .env.ka) — those routes fail closed
+# rather than silently doing nothing. Fill in .env.ka and redeploy if that
+# changes.
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: ka_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ka-lims
+    volumes:
+      - ka_mysql_data:/var/lib/mysql
+      # Runs only on first boot, while the data volume is still empty.
+      # This is a mysqldump of the live jh-lims database at deploy time —
+      # per request, seeded from JH rather than a clean schema. Rename/replace
+      # Jharkhand-specific rows (branch, districts, users) through the app,
+      # or re-seed before this ever takes real Karnataka patients.
+      - ./db.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: ./HIMS-backend
+      dockerfile: Dockerfile
+    container_name: ka_backend
+    restart: unless-stopped
+    networks:
+      - default
+      - lims_default
+    ports:
+      - "127.0.0.1:7016:7005"
+    environment:
+      PORT: 7005
+      NODE_ENV: production
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      DB_PORT: 3306
+      DB_NAME: ka-lims
+      JWT_SECRET: ${JWT_SECRET}
+      DEVELOPER_JWT_SECRET: ${DEVELOPER_JWT_SECRET}
+      DEVELOPER_EMAIL: ${DEVELOPER_EMAIL}
+      ALLOWED_ORIGINS: https://ka-lims.poxiatechnologies.com
+      ALLOWED_HOSTS: ka-lims.poxiatechnologies.com
+      FRONTEND_URL: https://ka-lims.poxiatechnologies.com
+      PUBLIC_API_URL: https://ka-lims.poxiatechnologies.com
+      # Shared WhatsApp bot from the original Meril stack, same as jh-lims.
+      WHATSAPP_BOT_URL: http://bot:3005
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM_NAME: KA-LIMS
+      # ── CDAC e-Sushrut HMIS — not needed for this deployment ────────────
+      CDAC_BASE_URL: ${CDAC_BASE_URL}
+      CDAC_HMIS_EXT_USER: ${CDAC_HMIS_EXT_USER}
+      CDAC_API_ACCESS_KEY_MAP: ${CDAC_API_ACCESS_KEY_MAP}
+      CDAC_REQUEST_TIMEOUT_MS: ${CDAC_REQUEST_TIMEOUT_MS}
+      CDAC_REPORT_REQUEST_TIMEOUT_MS: ${CDAC_REPORT_REQUEST_TIMEOUT_MS}
+      CDAC_MAX_RETRIES: ${CDAC_MAX_RETRIES}
+      CDAC_RETRY_BASE_MS: ${CDAC_RETRY_BASE_MS}
+      # ── CARE HMIS — not needed for this deployment ──────────────────────
+      CARE_BACKEND_URL: ${CARE_BACKEND_URL}
+      CARE_GATEWAY_PRIVATE_KEY_PEM: ${CARE_GATEWAY_PRIVATE_KEY_PEM}
+      CARE_GATEWAY_KEY_ID: ${CARE_GATEWAY_KEY_ID}
+      CARE_API_KEY: ${CARE_API_KEY}
+      # ── Ollama Cloud — patient prescription/bill-photo auto-billing ─────
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./HIMS-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://ka-lims.poxiatechnologies.com
+    container_name: ka_frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5011:80"
+    environment:
+      CSP_CONNECT_SRC: ""
+    depends_on:
+      - backend
+
+networks:
+  # Created by the older Meril stack; declared external so this file never
+  # tries to create or remove it. Only used to reach the shared WhatsApp bot.
+  lims_default:
+    external: true
+
+volumes:
+  ka_mysql_data:

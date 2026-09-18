@@ -1,0 +1,5 @@
+{
+  "protocol": "TCP_HL7",
+  "port": 9527,
+  "handshake": "none"
+}

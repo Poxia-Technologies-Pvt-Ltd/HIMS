@@ -1,0 +1,36 @@
+{
+  "protocol_type": "HL7",
+  "frame_structure": {
+    "start_sequence": "MSH",
+    "segment_separator": "\r",
+    "field_separator": "|",
+    "component_separator": "^"
+  },
+  "tests": [
+    {"name": "WBC", "id": "6690-2", "label": "WBC"},
+    {"name": "LYM%", "id": "736-9", "label": "LYM%"},
+    {"name": "MON%", "id": "731-0", "label": "MON%"},
+    {"name": "NEU%", "id": "10028", "label": "NEU%"},
+    {"name": "EOS%", "id": "10029", "label": "EOS%"},
+    {"name": "BAS%", "id": "10030", "label": "BAS%"},
+    {"name": "LYM#", "id": "lym_abs", "label": "LYM#"},
+    {"name": "MON#", "id": "mon_abs", "label": "MON#"},
+    {"name": "NEU#", "id": "neu_abs", "label": "NEU#"},
+    {"name": "EOS#", "id": "eos_abs", "label": "EOS#"},
+    {"name": "BAS#", "id": "bas_abs", "label": "BAS#"},
+    {"name": "RBC", "id": "789-8", "label": "RBC"},
+    {"name": "HGB", "id": "718-7", "label": "HGB"},
+    {"name": "HCT", "id": "4544-3", "label": "HCT"},
+    {"name": "MCV", "id": "mcv", "label": "MCV"},
+    {"name": "MCH", "id": "785-6", "label": "MCH"},
+    {"name": "MCHC", "id": "786-4", "label": "MCHC"},
+    {"name": "RDW-CV", "id": "788-0", "label": "RDW-CV"},
+    {"name": "RDW-SD", "id": "70-5", "label": "RDW-SD"},
+    {"name": "PLT", "id": "777-3", "label": "PLT"},
+    {"name": "MPV", "id": "32623-1", "label": "MPV"},
+    {"name": "PDW", "id": "32207-3", "label": "PDW"},
+    {"name": "PCT", "id": "10002", "label": "PCT"},
+    {"name": "PLCR", "id": "plcr", "label": "P-LCR"}
+  ],
+  "note": "HL7 5-Part Hematology Protocol for Merilyzer CelQuant 5plus"
+}

@@ -1,0 +1,15 @@
+{
+  "protocol_type": "TEXT",
+  "frame_structure": {
+    "end_marker": "Cl",
+    "esc_bytes": ["1b2100", "1b2120", "1b00", "1b"],
+    "value_pattern": "PARAM = VALUE [UNIT] [LOW|HIGH|ERROR]"
+  },
+  "tests": [
+    { "name": "Na", "label": "Sodium",    "unit": "mmol/L", "ref_range": "135 - 145" },
+    { "name": "K",  "label": "Potassium", "unit": "mmol/L", "ref_range": "3.5 - 5.5" },
+    { "name": "Cl", "label": "Chloride",  "unit": "mmol/L", "ref_range": "98 - 107" }
+  ],
+  "value_pattern": "=",
+  "note": "Plain-text electrolyte protocol for SENSA CORE ST-200CL. No patient/sample ID field in the instrument's own output — requires an active Run Test context, same as HDC-LYTE PRO. Cl is the last parameter — triggers report completion. Na may read '**Error**' instead of a number; that string is passed through as the result value rather than dropped."
+}

@@ -1,0 +1,87 @@
+{
+  "frame_structure": {
+    "1": {
+      "data": "AA",
+      "description": "SOF (Start of Frame)"
+    },
+    "2": {
+      "data": "Test Name",
+      "tests": [
+        {"name": "ALP", "id": 1},
+        {"name": "ALT", "id": 2},
+        {"name": "AMY", "id": 3},
+        {"name": "AST", "id": 4},
+        {"name": "CHO", "id": 5},
+        {"name": "CKMB", "id": 6},
+        {"name": "CKNAC", "id": 7},
+        {"name": "GGT", "id": 8},
+        {"name": "GLU", "id": 9},
+        {"name": "LDH", "id": 10},
+        {"name": "TRIG", "id": 11},
+        {"name": "UREA", "id": 12},
+        {"name": "URIC-ACID", "id": 13},
+        {"name": "ALB", "id": 14},
+        {"name": "TBIL", "id": 15},
+        {"name": "CAL-A", "id": 16},
+        {"name": "CAL-O", "id": 17},
+        {"name": "CHL", "id": 18},
+        {"name": "CREAT", "id": 19},
+        {"name": "DBIL", "id": 20},
+        {"name": "HDL", "id": 21},
+        {"name": "PHO", "id": 22},
+        {"name": "TP", "id": 23},
+        {"name": "MICRO PROTEIN", "id": 24},
+        {"name": "HBA1C", "id": 25},
+        {"name": "ASO LATEX", "id": 26},
+        {"name": "CRP LATEX", "id": 27},
+        {"name": "RF LATEX", "id": 28},
+        {"name": "D DIMER", "id": 29},
+        {"name": "DYE340", "id": 30},
+        {"name": "DYE505", "id": 31},
+        {"name": "DYE620", "id": 32}
+      ],
+      "note": "Up to 100 user-defined tests supported"
+    },
+    "3": {
+      "data": "Unit",
+      "units": [
+        {"unit": "g/L", "id": 0},
+        {"unit": "ug/dL", "id": 1},
+        {"unit": "mmol/L", "id": 2},
+        {"unit": "U/L", "id": 3},
+        {"unit": "mg/dL", "id": 4},
+        {"unit": "umol/L", "id": 5},
+        {"unit": "mg/L", "id": 6},
+        {"unit": "g/dL", "id": 7},
+        {"unit": "nmol/L", "id": 8},
+        {"unit": "U/ml", "id": 9},
+        {"unit": "ng/ml", "id": 10},
+        {"unit": "ug/ml", "id": 11},
+        {"unit": "ug%", "id": 12},
+        {"unit": "mEq/L", "id": 13},
+        {"unit": "%", "id": 14},
+        {"unit": "NULL", "id": 15}
+      ]
+    },
+    "4-9": {
+      "data": "CRN No",
+      "description": "6 Digit CRN No (e.g., 000012)"
+    },
+    "10-13": {
+      "data": "Result",
+      "description": "4 Digit Result"
+    },
+    "14-17": {
+      "data": "REF-H",
+      "description": "4 Digit Reference High (available in program menu)"
+    },
+    "18-21": {
+      "data": "REF-L",
+      "description": "4 Digit Reference Low (available in program menu)"
+    },
+    "22": {
+      "data": "0xF5",
+      "description": "EOF (End of Frame)"
+    }
+  }
+}

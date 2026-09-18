@@ -1,0 +1,614 @@
+/* DutyScheduler.css - Hospital Enterprise UI */
+
+.staff-page {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  flex: 1;
+}
+
+/* Page Header */
+.staff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.staff-header h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.staff-header p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 4px 0 0 0;
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.stat-card {
+  background: white;
+  padding: 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+.stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--brand-blue);
+}
+
+.history-toggle-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-toggle {
+  background: var(--field-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 60px;
+  color: var(--text-muted);
+}
+
+.btn-toggle.active {
+  background: var(--brand-blue);
+  color: white;
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
+}
+
+/* Table Section */
+.staff-table-card {
+  background: white;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  overflow: visible; /* allow filter dropdowns to overflow */
+}
+
+/* clip only the table rows, not the toolbar */
+.staff-table-card > .staff-table {
+  overflow: hidden;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.table-toolbar {
+  padding: 16px 20px;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.filters-toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 20px;
+  padding: 12px 20px;
+  flex-wrap: wrap;
+}
+
+.toolbar-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Each filter item creates its own stacking context so dropdowns sit on top */
+  position: relative;
+}
+
+.filter-item label {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--brand-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.filter-input {
+  padding: 8px 10px;
+  font-size: 13px;
+  background: white;
+}
+
+.search-input-wrapper {
+  position: relative;
+  width: 240px;
+}
+
+.search-input-wrapper input {
+  width: 100%;
+  padding-left: 36px;
+  box-sizing: border-box;
+}
+
+.search-input-wrapper svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* Table */
+.staff-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.staff-table th {
+  text-align: left;
+  padding: 12px 20px;
+  background: var(--header-bg);
+  color: var(--text-label);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+
+.staff-table td {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 14px;
+  color: var(--text-main);
+  vertical-align: middle;
+}
+
+.staff-table tr:last-child td {
+  border-bottom: none;
+}
+
+.staff-table tr:hover td {
+  background: var(--field-bg-ro);
+}
+
+/* Duty-specific */
+.room-badge {
+  display: inline-block;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #e2e8f0;
+}
+
+.status-badge {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.status-scheduled  { background: #eff6ff; color: #3b82f6; border: 1px solid #dbeafe; }
+.status-ongoing    { background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; }
+.status-completed  { background: #ecfdf5; color: #10b981; border: 1px solid #d1fae5; }
+.status-cancelled  { background: #fef2f2; color: #ef4444; border: 1px solid #fecaca; }
+
+.btn-icon-delete {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon-delete:hover {
+  background: #fef2f2;
+  color: #ef4444;
+}
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(4px);
+  padding: 16px;
+}
+
+.modal-content {
+  background: white;
+  width: 100%;
+  max-width: 520px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  overflow: hidden; /* clip rounded corners */
+}
+
+.modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.btn-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-close:hover {
+  background: #f1f5f9;
+  color: var(--text-main);
+}
+
+/* 
+  KEY FIX: modal-body must be overflow: visible (not hidden/auto) 
+  so that the absolutely-positioned dropdowns can escape the scroll box.
+  We use a wrapper trick: the form scrolls, but each field stays visible.
+*/
+.modal-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  overflow-x: visible;
+  flex: 1;
+
+  /* Allow dropdowns to visually overflow the scroll container */
+  /* This works because the dropdowns use position:absolute inside position:relative parents */
+}
+
+.modal-footer {
+  padding: 16px 24px;
+  background: var(--header-bg);
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   SEARCHABLE SELECT
+   ============================================================ */
+
+.searchable-select-container {
+  position: relative;
+  width: 100%;
+}
+
+.searchable-select-container.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Trigger button */
+.searchable-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  background: white;
+  border: 1.5px solid var(--border-input, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-size: 13.5px;
+  min-height: 40px;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.searchable-select-trigger:hover {
+  border-color: #cbd5e1;
+}
+
+.searchable-select-trigger.open {
+  border-color: var(--brand-blue, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.searchable-select-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  text-align: left;
+}
+
+.searchable-select-trigger span.placeholder {
+  color: var(--text-muted, #94a3b8);
+}
+
+.searchable-select-trigger span.selected {
+  color: var(--text-main, #0f172a);
+}
+
+.searchable-select-trigger svg {
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.searchable-select-trigger svg.rotate {
+  transform: rotate(180deg);
+}
+
+/* 
+  CRITICAL: dropdown floats absolutely so it NEVER pushes sibling fields down.
+  High z-index ensures it overlays everything below.
+*/
+.searchable-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1.5px solid #e2e8f0;
+  border-radius: var(--radius-sm, 8px);
+  box-shadow:
+    0 4px 6px -1px rgba(0,0,0,0.07),
+    0 10px 25px -5px rgba(0,0,0,0.12);
+  z-index: 9999;          /* always on top of modal content */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 100%;
+  /* Hard cap so it doesn't run off screen */
+  max-height: 260px;
+}
+
+/* Search box inside dropdown */
+.searchable-select-search {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  gap: 8px;
+  flex-shrink: 0;
+  background: #fafbfc;
+}
+
+.searchable-select-search svg {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.searchable-select-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-main, #0f172a);
+}
+
+.searchable-select-search input::placeholder {
+  color: #cbd5e1;
+}
+
+/* Options list */
+.searchable-select-options {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+
+.searchable-select-option {
+  padding: 9px 14px;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background 0.15s;
+  color: var(--text-main, #0f172a);
+  line-height: 1.4;
+}
+
+.searchable-select-option:hover {
+  background: #f0f6ff;
+}
+
+.searchable-select-option.selected {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--brand-blue, #2563eb);
+  font-weight: 600;
+}
+
+.searchable-select-no-results {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted, #94a3b8);
+  font-style: italic;
+}
+
+/* ── Filter row variants ── */
+.filter-select .searchable-select-trigger {
+  padding: 8px 10px;
+  font-size: 13px;
+  min-height: 36px;
+}
+
+/* ── Modal form variants ── */
+.preg-field .searchable-select-container {
+  width: 100%;
+}
+
+.preg-field .searchable-select-trigger {
+  padding: 10px 13px;
+  min-height: 42px;
+  font-size: 14px;
+  border-radius: 10px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.preg-field .searchable-select-trigger:hover {
+  background: white;
+  border-color: #cbd5e1;
+}
+
+.preg-field .searchable-select-trigger.open {
+  background: white;
+  border-color: var(--brand-blue, #2563eb);
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.12), inset 0 0 0 1px var(--brand-blue,#2563eb);
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 768px) {
+  .staff-page {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .staff-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .filter-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .search-input-wrapper {
+    width: 100%;
+  }
+
+  .toolbar-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .staff-table {
+    font-size: 13px;
+  }
+
+  .staff-table th,
+  .staff-table td {
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-content {
+    border-radius: 16px 16px 0 0;
+    max-height: 95vh;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .modal-footer .btn-ghost,
+  .modal-footer .btn-primary {
+    width: 100%;
+    text-align: center;
+  }
+}
