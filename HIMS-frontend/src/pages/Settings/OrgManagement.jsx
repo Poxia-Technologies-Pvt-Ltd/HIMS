@@ -6,7 +6,6 @@ const API   = import.meta.env.VITE_API_URL || '';
 const tok   = () => localStorage.getItem('hims_token');
 const hdr   = () => ({ Authorization: `Bearer ${tok()}`, 'Content-Type': 'application/json' });
 const bId   = () => localStorage.getItem('branch_id');
-const role  = () => localStorage.getItem('role_level') || 'Branch';
 
 const DAYS  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const BED_TYPES   = ['General','Semi-Private','Private','ICU','HDU','NICU','PICU','Day Care'];
@@ -128,434 +127,6 @@ function DepartmentsTab({ showAlert }) {
 }
 
 // ── District Manager (used inside StatesTab) ──────────────────────────────────
-function DistrictManager({ state, allDistricts, onRefresh, showAlert }) {
-  const districts = allDistricts.filter(d => String(d.state_id) === String(state.id));
-  const [editingDist, setEditingDist] = useState(null);
-  const [distForm, setDistForm]       = useState({ name:'' });
-  const [showForm, setShowForm]       = useState(false);
-
-  const openAdd = () => { setEditingDist(null); setDistForm({ name:'' }); setShowForm(true); };
-  const openEdit = (d) => { setEditingDist(d); setDistForm({ name: d.name }); setShowForm(true); };
-  const cancel = () => { setShowForm(false); setEditingDist(null); };
-
-  const save = async () => {
-    if (!distForm.name.trim()) return showAlert('District name is required', 'warning');
-    const url    = editingDist ? `${API}/api/branches/district/${editingDist.id}` : `${API}/api/branches/district`;
-    const method = editingDist ? 'PUT' : 'POST';
-    const r = await fetch(url, {
-      method, headers: hdr(),
-      body: JSON.stringify({ name: distForm.name.trim(), state_id: state.id, state: state.name })
-    });
-    const d = await r.json();
-    if (d.success) { cancel(); onRefresh(); showAlert(editingDist ? 'District updated' : 'District added', 'success'); }
-    else showAlert(d.message || 'Error', 'error');
-  };
-
-  const del = async (dist) => {
-    if (!window.confirm(`Delete district "${dist.name}"?`)) return;
-    const r = await fetch(`${API}/api/branches/district/${dist.id}`, { method:'DELETE', headers: hdr() });
-    const d = await r.json();
-    if (d.success) { onRefresh(); showAlert('District deleted', 'success'); }
-    else showAlert(d.message || 'Error', 'error');
-  };
-
-  return (
-    <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:'14px 16px' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-        <span style={{ fontSize:12, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.5px' }}>
-          Districts in {state.name}
-        </span>
-        <button onClick={openAdd} style={{ padding:'4px 12px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer' }}>+ Add District</button>
-      </div>
-
-      {showForm && (
-        <div style={{ display:'flex', gap:8, marginBottom:10, alignItems:'center', background:'#fff', border:'1px solid #c7d2fe', borderRadius:8, padding:'10px 12px' }}>
-          <input
-            style={{ ...inp, flex:1, marginBottom:0 }}
-            value={distForm.name}
-            onChange={e => setDistForm({ name: e.target.value })}
-            placeholder="District name…"
-            autoFocus
-            onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') cancel(); }}
-          />
-          <button onClick={save} style={{ padding:'7px 14px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap' }}>
-            {editingDist ? 'Update' : 'Add'}
-          </button>
-          <button onClick={cancel} style={{ padding:'7px 10px', border:'1px solid #e2e8f0', background:'#fff', borderRadius:6, fontSize:12, cursor:'pointer' }}>✕</button>
-        </div>
-      )}
-
-      {districts.length === 0 && !showForm && (
-        <div style={{ textAlign:'center', padding:'16px 0', color:'#94a3b8', fontSize:12 }}>No districts yet. Click "+ Add District" to create one.</div>
-      )}
-
-      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-        {districts.map(d => (
-          <div key={d.id} style={{ display:'flex', alignItems:'center', background:'#fff', border:'1px solid #e2e8f0', borderRadius:7, padding:'8px 12px' }}>
-            <div style={{ width:8, height:8, borderRadius:'50%', background:'#a5b4fc', marginRight:10, flexShrink:0 }} />
-            <span style={{ flex:1, fontSize:13, fontWeight:500, color:'#1e293b' }}>{d.name}</span>
-            <button onClick={() => openEdit(d)} style={{ marginRight:6, padding:'3px 10px', border:'1px solid #e2e8f0', background:'#fff', borderRadius:5, fontSize:11, cursor:'pointer' }}>Edit</button>
-            <button onClick={() => del(d)} style={{ padding:'3px 10px', border:'1px solid #fca5a5', background:'#fff', color:'#dc2626', borderRadius:5, fontSize:11, cursor:'pointer' }}>Delete</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── States Tab ────────────────────────────────────────────────────────────────
-function StatesTab({ showAlert }) {
-  const [states, setStates]       = useState([]);
-  const [allDistricts, setAllDistricts] = useState([]);
-  const [modal, setModal]         = useState(false);
-  const [editing, setEditing]     = useState(null);
-  const [expandedState, setExpandedState] = useState(null);
-  const [form, setForm]           = useState({ name:'', code:'' });
-
-  if (role() !== 'Central') return (
-    <div style={{ textAlign:'center', padding:60, color:'#94a3b8' }}>
-      <div style={{ fontSize:40, marginBottom:12 }}>🔒</div>
-      <p style={{ fontSize:14 }}>Only Central admins can manage states.</p>
-    </div>
-  );
-
-  const load = async () => {
-    const [sr, br] = await Promise.all([
-      fetch(`${API}/api/org/states`, { headers: hdr() }).then(r=>r.json()),
-      fetch(`${API}/api/branches`, { headers: hdr() }).then(r=>r.json()),
-    ]);
-    if (sr.success) setStates(sr.states || []);
-    if (br.success) setAllDistricts(br.districts || []);
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const distCount = (stateId) => allDistricts.filter(d => String(d.state_id) === String(stateId)).length;
-
-  const open = (s) => {
-    setEditing(s || null);
-    setForm(s ? { name:s.name, code:s.code } : { name:'', code:'' });
-    setModal(true);
-  };
-
-  const save = async () => {
-    if (!form.name || !form.code) return showAlert('Name and code are required', 'warning');
-    const url = editing ? `${API}/api/org/states/${editing.id}` : `${API}/api/org/states`;
-    const r = await fetch(url, { method: editing ? 'PUT':'POST', headers: hdr(), body: JSON.stringify(form) });
-    const d = await r.json();
-    if (d.success) { setModal(false); load(); showAlert('Saved', 'success'); }
-    else showAlert(d.message || 'Error', 'error');
-  };
-
-  const del = async (id) => {
-    if (!window.confirm('Delete this state?')) return;
-    const r = await fetch(`${API}/api/org/states/${id}`, { method:'DELETE', headers: hdr() });
-    const d = await r.json();
-    if (d.success) { if (expandedState === id) setExpandedState(null); load(); showAlert('Deleted', 'success'); }
-    else showAlert(d.message || 'Error', 'error');
-  };
-
-  return (
-    <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-        <h3 style={{ margin:0, fontSize:16, fontWeight:700 }}>States & Districts</h3>
-        <button onClick={() => open(null)} style={{ padding:'8px 16px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>+ Add State</button>
-      </div>
-      <table style={{ width:'100%', borderCollapse:'collapse' }}>
-        <thead><tr style={{ background:'#f8fafc' }}>
-          {['State Name','Code','Districts','Status',''].map(h => <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', borderBottom:'1.5px solid #e2e8f0' }}>{h}</th>)}
-        </tr></thead>
-        <tbody>{states.map(s => (
-          <>
-            <tr key={s.id} style={{ borderBottom: expandedState === s.id ? 'none' : '1px solid #f1f5f9', background: expandedState === s.id ? '#fafbff' : '' }}>
-              <td style={{ padding:'10px 12px', fontWeight:600 }}>{s.name}</td>
-              <td style={{ padding:'10px 12px', fontFamily:'monospace', fontSize:13 }}>{s.code}</td>
-              <td style={{ padding:'10px 12px' }}>
-                <button
-                  onClick={() => setExpandedState(expandedState === s.id ? null : s.id)}
-                  style={{ padding:'3px 10px', border:'1px solid #c7d2fe', background: expandedState===s.id ? '#eef2ff':'#fff', color:'#4f46e5', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer' }}
-                >
-                  {distCount(s.id)} Districts {expandedState === s.id ? '▲' : '▼'}
-                </button>
-              </td>
-              <td style={{ padding:'10px 12px' }}><Badge label={s.is_active ? 'Active':'Inactive'} color={s.is_active ? 'green':'grey'} /></td>
-              <td style={{ padding:'10px 12px' }}>
-                <button onClick={() => open(s)} style={{ marginRight:6, padding:'4px 10px', border:'1px solid #e2e8f0', background:'#fff', borderRadius:6, fontSize:12, cursor:'pointer' }}>Edit</button>
-                <button onClick={() => del(s.id)} style={{ padding:'4px 10px', border:'1px solid #fca5a5', background:'#fff', color:'#dc2626', borderRadius:6, fontSize:12, cursor:'pointer' }}>Delete</button>
-              </td>
-            </tr>
-            {expandedState === s.id && (
-              <tr key={`${s.id}-districts`}>
-                <td colSpan={5} style={{ padding:'0 16px 16px', background:'#fafbff', borderBottom:'1px solid #e2e8f0' }}>
-                  <DistrictManager
-                    state={s}
-                    allDistricts={allDistricts}
-                    onRefresh={load}
-                    showAlert={showAlert}
-                  />
-                </td>
-              </tr>
-            )}
-          </>
-        ))}</tbody>
-      </table>
-      {states.length === 0 && <div style={{ textAlign:'center', padding:40, color:'#94a3b8', fontSize:13 }}>No states found.</div>}
-
-      {modal && <Modal title={editing ? 'Edit State':'Add State'} onClose={() => setModal(false)}>
-        <Field label="State Name" required><input style={inp} value={form.name} onChange={e => setForm(p=>({...p,name:e.target.value}))} placeholder="e.g. Jharkhand" /></Field>
-        <Field label="State Code (2–3 letters)" required><input style={inp} value={form.code} onChange={e => setForm(p=>({...p,code:e.target.value.toUpperCase()}))} placeholder="e.g. JH" maxLength={10} /></Field>
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:20 }}>
-          <button onClick={() => setModal(false)} style={{ padding:'8px 16px', border:'1.5px solid #e2e8f0', background:'none', borderRadius:7, fontSize:13, cursor:'pointer' }}>Cancel</button>
-          <button onClick={save} style={{ padding:'8px 20px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:7, fontSize:13, fontWeight:600, cursor:'pointer' }}>Save</button>
-        </div>
-      </Modal>}
-    </div>
-  );
-}
-
-// ── Facility Manager (used inside BlocksTab) ──────────────────────────────────
-function FacilityManager({ block, allBranches, onRefresh, showAlert }) {
-  const assigned   = allBranches.filter(b => b.block_id == block.id);
-  const unassigned = allBranches.filter(b => !b.block_id);
-  const [selBranch, setSelBranch] = useState('');
-
-  const assign = async () => {
-    if (!selBranch) return;
-    const r = await fetch(`${API}/api/branches/center/${selBranch}/block`, {
-      method: 'PATCH', headers: hdr(),
-      body: JSON.stringify({ block_id: block.id })
-    });
-    const d = await r.json();
-    if (d.success) { setSelBranch(''); onRefresh(); showAlert('Facility assigned to block', 'success'); }
-    else showAlert(d.message || 'Error', 'error');
-  };
-
-  const unassign = async (branchId, branchName) => {
-    if (!window.confirm(`Remove "${branchName}" from this block?`)) return;
-    const r = await fetch(`${API}/api/branches/center/${branchId}/block`, {
-      method: 'PATCH', headers: hdr(),
-      body: JSON.stringify({ block_id: null })
-    });
-    const d = await r.json();
-    if (d.success) { onRefresh(); showAlert('Facility removed from block', 'success'); }
-    else showAlert(d.message || 'Error', 'error');
-  };
-
-  const typeColor = { PHC:'#dbeafe', CHC:'#dcfce7', UPHC:'#fef9c3', SDH:'#f3e8ff', DHH:'#ffedd5', Hospital:'#f1f5f9' };
-
-  return (
-    <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:'14px 16px' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-        <span style={{ fontSize:12, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.5px' }}>
-          Facilities in {block.name}
-        </span>
-        <span style={{ fontSize:11, color:'#94a3b8' }}>{assigned.length} assigned</span>
-      </div>
-
-      {/* Assign row */}
-      <div style={{ display:'flex', gap:8, marginBottom:12, alignItems:'center' }}>
-        <select
-          style={{ ...sel, flex:1 }}
-          value={selBranch}
-          onChange={e => setSelBranch(e.target.value)}
-        >
-          <option value="">Assign an unassigned facility…</option>
-          {unassigned.map(b => (
-            <option key={b.id} value={b.id}>{b.branch_name} ({b.hospital_code})</option>
-          ))}
-        </select>
-        <button
-          onClick={assign}
-          disabled={!selBranch}
-          style={{ padding:'7px 16px', background: selBranch ? '#4f46e5':'#e2e8f0', color: selBranch ? '#fff':'#94a3b8', border:'none', borderRadius:7, fontSize:12, fontWeight:600, cursor: selBranch ? 'pointer':'default', whiteSpace:'nowrap' }}
-        >
-          Assign
-        </button>
-      </div>
-
-      {assigned.length === 0 && (
-        <div style={{ textAlign:'center', padding:'14px 0', color:'#94a3b8', fontSize:12 }}>
-          No facilities assigned yet. Use the dropdown above to assign one.
-        </div>
-      )}
-
-      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-        {assigned.map(b => (
-          <div key={b.id} style={{ display:'flex', alignItems:'center', background:'#fff', border:'1px solid #e2e8f0', borderRadius:8, padding:'9px 12px', gap:10 }}>
-            <div style={{ width:8, height:8, borderRadius:'50%', background:'#6ee7b7', flexShrink:0 }} />
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontWeight:600, fontSize:13, color:'#1e293b', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{b.branch_name}</div>
-              <div style={{ fontSize:11, color:'#94a3b8', marginTop:1 }}>{b.hospital_code} · {b.address || 'No address'}</div>
-            </div>
-            {b.facility_type && (
-              <span style={{ padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:700, background: typeColor[b.facility_type] || '#f1f5f9', color:'#475569', flexShrink:0 }}>{b.facility_type}</span>
-            )}
-            <span style={{ padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:600, background: b.status==='Active'?'#dcfce7':'#fee2e2', color: b.status==='Active'?'#166534':'#991b1b', flexShrink:0 }}>{b.status}</span>
-            <button onClick={() => unassign(b.id, b.branch_name)} style={{ padding:'4px 10px', border:'1px solid #fca5a5', background:'#fff', color:'#dc2626', borderRadius:6, fontSize:11, cursor:'pointer', flexShrink:0 }}>Remove</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Blocks Tab ────────────────────────────────────────────────────────────────
-function BlocksTab({ showAlert }) {
-  const [blocks, setBlocks]         = useState([]);
-  const [districts, setDistricts]   = useState([]);
-  const [states, setStates]         = useState([]);
-  const [branches, setBranches]     = useState([]);
-  const [filterState, setFilterState] = useState('');
-  const [filterDist, setFilterDist]   = useState('');
-  const [expandedBlock, setExpandedBlock] = useState(null);
-  const [modal, setModal]           = useState(false);
-  const [editing, setEditing]       = useState(null);
-  const [form, setForm]             = useState({ name:'', state_id:'', district_id:'' });
-
-  const load = async () => {
-    const [br, bl, st] = await Promise.all([
-      fetch(`${API}/api/branches`, { headers: hdr() }).then(r=>r.json()),
-      fetch(`${API}/api/org/blocks`, { headers: hdr() }).then(r=>r.json()),
-      fetch(`${API}/api/org/states`, { headers: hdr() }).then(r=>r.json()),
-    ]);
-    if (br.success) {
-      setDistricts(br.districts || []);
-      setBranches(br.branches || []);
-    }
-    if (bl.success) setBlocks(bl.blocks || []);
-    if (st.success) setStates(st.states || []);
-  };
-  useEffect(() => { load(); }, []);
-
-  const stateOfDistrict = (districtId) => {
-    const dist = districts.find(d => d.id == districtId);
-    if (!dist || !dist.state_id) return null;
-    return states.find(s => s.id == dist.state_id) || null;
-  };
-
-  const facilityCount = (blockId) => branches.filter(b => b.block_id == blockId).length;
-
-  const open = (b) => {
-    const stateId = b ? (stateOfDistrict(b.district_id)?.id || '') : '';
-    setEditing(b || null);
-    setForm(b ? { name:b.name, state_id: String(stateId), district_id: String(b.district_id) } : { name:'', state_id:'', district_id:'' });
-    setModal(true);
-  };
-
-  const districtsByState = form.state_id
-    ? districts.filter(d => String(d.state_id) === String(form.state_id))
-    : districts;
-
-  const save = async () => {
-    if (!form.name || !form.district_id) return showAlert('Name and district are required', 'warning');
-    const url = editing ? `${API}/api/org/blocks/${editing.id}` : `${API}/api/org/blocks`;
-    const r = await fetch(url, { method: editing?'PUT':'POST', headers: hdr(), body: JSON.stringify({ name: form.name, district_id: form.district_id }) });
-    const d = await r.json();
-    if (d.success) { setModal(false); load(); showAlert('Saved', 'success'); }
-    else showAlert(d.message||'Error', 'error');
-  };
-
-  const del = async (id) => {
-    if (!window.confirm('Delete this block?')) return;
-    const r = await fetch(`${API}/api/org/blocks/${id}`, { method:'DELETE', headers: hdr() });
-    const d = await r.json();
-    if (d.success) { if (expandedBlock === id) setExpandedBlock(null); load(); showAlert('Deleted','success'); }
-    else showAlert(d.message||'Error','error');
-  };
-
-  const filteredDistsForTable = filterState ? districts.filter(d => String(d.state_id) === filterState) : districts;
-  const filteredDistIds = filteredDistsForTable.map(d => d.id);
-  const filtered = blocks.filter(b => {
-    if (filterState && !filteredDistIds.includes(b.district_id)) return false;
-    if (filterDist && b.district_id != filterDist) return false;
-    return true;
-  });
-
-  return (
-    <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
-          <h3 style={{ margin:0, fontSize:16, fontWeight:700 }}>Blocks</h3>
-          <select style={{ ...sel, width:'auto' }} value={filterState} onChange={e => { setFilterState(e.target.value); setFilterDist(''); }}>
-            <option value="">All States</option>
-            {states.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <select style={{ ...sel, width:'auto' }} value={filterDist} onChange={e => setFilterDist(e.target.value)}>
-            <option value="">All Districts</option>
-            {(filterState ? districts.filter(d => String(d.state_id) === filterState) : districts).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </div>
-        <button onClick={() => open(null)} style={{ padding:'8px 16px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>+ Add Block</button>
-      </div>
-
-      <table style={{ width:'100%', borderCollapse:'collapse' }}>
-        <thead><tr style={{ background:'#f8fafc' }}>
-          {['Block Name','State','District','Facilities',''].map(h => <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', borderBottom:'1.5px solid #e2e8f0' }}>{h}</th>)}
-        </tr></thead>
-        <tbody>{filtered.map(b => {
-          const st = stateOfDistrict(b.district_id);
-          const isOpen = expandedBlock === b.id;
-          return (
-            <>
-              <tr key={b.id} style={{ borderBottom: isOpen ? 'none':'1px solid #f1f5f9', background: isOpen ? '#fafbff':'' }}>
-                <td style={{ padding:'10px 12px', fontWeight:600 }}>{b.name}</td>
-                <td style={{ padding:'10px 12px', color:'#64748b' }}>{st ? st.name : '—'}</td>
-                <td style={{ padding:'10px 12px', color:'#64748b' }}>{b.district_name}</td>
-                <td style={{ padding:'10px 12px' }}>
-                  <button
-                    onClick={() => setExpandedBlock(isOpen ? null : b.id)}
-                    style={{ padding:'3px 10px', border:'1px solid #a7f3d0', background: isOpen ? '#ecfdf5':'#fff', color:'#059669', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer' }}
-                  >
-                    {facilityCount(b.id)} Facilities {isOpen ? '▲':'▼'}
-                  </button>
-                </td>
-                <td style={{ padding:'10px 12px' }}>
-                  <button onClick={() => open(b)} style={{ marginRight:6, padding:'4px 10px', border:'1px solid #e2e8f0', background:'#fff', borderRadius:6, fontSize:12, cursor:'pointer' }}>Edit</button>
-                  <button onClick={() => del(b.id)} style={{ padding:'4px 10px', border:'1px solid #fca5a5', background:'#fff', color:'#dc2626', borderRadius:6, fontSize:12, cursor:'pointer' }}>Delete</button>
-                </td>
-              </tr>
-              {isOpen && (
-                <tr key={`${b.id}-facilities`}>
-                  <td colSpan={5} style={{ padding:'0 16px 16px', background:'#fafbff', borderBottom:'1px solid #e2e8f0' }}>
-                    <FacilityManager
-                      block={b}
-                      allBranches={branches}
-                      onRefresh={load}
-                      showAlert={showAlert}
-                    />
-                  </td>
-                </tr>
-              )}
-            </>
-          );
-        })}</tbody>
-      </table>
-      {filtered.length === 0 && <div style={{ textAlign:'center', padding:40, color:'#94a3b8', fontSize:13 }}>No blocks found.</div>}
-
-      {modal && <Modal title={editing?'Edit Block':'Add Block'} onClose={() => setModal(false)}>
-        <Field label="Block Name" required><input style={inp} value={form.name} onChange={e => setForm(p=>({...p,name:e.target.value}))} placeholder="e.g. Ranchi Block" /></Field>
-        <Field label="State" required>
-          <select style={sel} value={form.state_id} onChange={e => setForm(p=>({...p, state_id:e.target.value, district_id:''}))}>
-            <option value="">Select state…</option>
-            {states.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </Field>
-        <Field label="District" required>
-          <select style={sel} value={form.district_id} onChange={e => setForm(p=>({...p,district_id:e.target.value}))} disabled={!form.state_id}>
-            <option value="">{form.state_id ? 'Select district…' : 'Select a state first'}</option>
-            {districtsByState.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </Field>
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:20 }}>
-          <button onClick={() => setModal(false)} style={{ padding:'8px 16px', border:'1.5px solid #e2e8f0', background:'none', borderRadius:7, fontSize:13, cursor:'pointer' }}>Cancel</button>
-          <button onClick={save} style={{ padding:'8px 20px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:7, fontSize:13, fontWeight:600, cursor:'pointer' }}>Save</button>
-        </div>
-      </Modal>}
-    </div>
-  );
-}
-
-// ── Specialties Tab ───────────────────────────────────────────────────────────
 function SpecialtiesTab({ showAlert }) {
   const [specs, setSpecs]     = useState([]);
   const [modal, setModal]     = useState(false);
@@ -633,174 +204,6 @@ function SpecialtiesTab({ showAlert }) {
 }
 
 // ── Beds Tab ──────────────────────────────────────────────────────────────────
-function BedsTab({ showAlert }) {
-  const [wards, setWards]       = useState([]);
-  const [selWard, setSelWard]   = useState('');
-  const [beds, setBeds]         = useState([]);
-  const [summary, setSummary]   = useState({});
-  const [modal, setModal]       = useState(false);
-  const [bulkModal, setBulkModal] = useState(false);
-  const [editing, setEditing]   = useState(null);
-  const [form, setForm]         = useState({ bed_number:'', ward_id:'', bed_type:'General', status:'Available' });
-  const [bulk, setBulk]         = useState({ ward_id:'', bed_type:'General', prefix:'', start_number:1, count:10 });
-
-  const loadWards = async () => {
-    const [w, i] = await Promise.all([
-      fetch(`${API}/api/infra?type=Ward&branch_id=${bId()}`, { headers: hdr() }).then(r=>r.json()),
-      fetch(`${API}/api/infra?type=ICU&branch_id=${bId()}`, { headers: hdr() }).then(r=>r.json()),
-    ]);
-    setWards([...(w.items||[]), ...(i.items||[])]);
-  };
-
-  const loadBeds = async (wardId) => {
-    if (!wardId) return;
-    const r = await fetch(`${API}/api/org/beds?branch_id=${bId()}&ward_id=${wardId}`, { headers: hdr() });
-    const d = await r.json();
-    if (d.success) { setBeds(d.beds||[]); setSummary(d.summary||{}); }
-  };
-
-  useEffect(() => { loadWards(); }, []);
-  useEffect(() => { loadBeds(selWard); }, [selWard]);
-
-  const changeStatus = async (bed) => {
-    const next = { Available:'Occupied', Occupied:'Under Maintenance', 'Under Maintenance':'Reserved', Reserved:'Available' };
-    const r = await fetch(`${API}/api/org/beds/${bed.id}/status`, { method:'PATCH', headers: hdr(), body: JSON.stringify({ status: next[bed.status] }) });
-    const d = await r.json();
-    if (d.success) loadBeds(selWard);
-  };
-
-  const saveBed = async () => {
-    if (!form.bed_number || !form.ward_id) return showAlert('Bed number and ward are required', 'warning');
-    const url = editing ? `${API}/api/org/beds/${editing.id}` : `${API}/api/org/beds`;
-    const r = await fetch(url, { method: editing?'PUT':'POST', headers: hdr(), body: JSON.stringify({ ...form, branch_id: bId() }) });
-    const d = await r.json();
-    if (d.success) { setModal(false); loadBeds(selWard); showAlert('Saved','success'); } else showAlert(d.message||'Error','error');
-  };
-
-  const saveBulk = async () => {
-    if (!bulk.ward_id || !bulk.count) return showAlert('Ward and count are required', 'warning');
-    const r = await fetch(`${API}/api/org/beds/bulk`, { method:'POST', headers: hdr(), body: JSON.stringify({ ...bulk, branch_id: bId() }) });
-    const d = await r.json();
-    if (d.success) { setBulkModal(false); loadBeds(selWard); showAlert(`${d.created} beds created`, 'success'); } else showAlert(d.message||'Error','error');
-  };
-
-  const delBed = async (id) => {
-    if (!window.confirm('Delete this bed?')) return;
-    const r = await fetch(`${API}/api/org/beds/${id}?branch_id=${bId()}`, { method:'DELETE', headers: hdr() });
-    const d = await r.json();
-    if (d.success) { loadBeds(selWard); showAlert('Deleted','success'); }
-  };
-
-  const statusColor = { Available:'#22c55e', Occupied:'#ef4444', 'Under Maintenance':'#f59e0b', Reserved:'#8b5cf6' };
-
-  const previewBulk = () => {
-    const start = parseInt(bulk.start_number)||1;
-    const count = Math.min(parseInt(bulk.count)||10, 100);
-    const first = (bulk.prefix||'') + String(start).padStart(2,'0');
-    const last  = (bulk.prefix||'') + String(start+count-1).padStart(2,'0');
-    return `${first} → ${last} (${count} beds)`;
-  };
-
-  return (
-    <div>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-          <h3 style={{ margin:0, fontSize:16, fontWeight:700 }}>Bed Management</h3>
-          <select style={{ ...sel, width:'auto' }} value={selWard} onChange={e => setSelWard(e.target.value)}>
-            <option value="">Select a ward / ICU…</option>
-            {wards.map(w => <option key={w.id} value={w.id}>{w.name} ({w.type})</option>)}
-          </select>
-        </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => { setEditing(null); setForm({ bed_number:'', ward_id:selWard||'', bed_type:'General', status:'Available' }); setModal(true); }} style={{ padding:'8px 14px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>+ Add Bed</button>
-          <button onClick={() => { setBulk(p=>({...p, ward_id:selWard||''})); setBulkModal(true); }} style={{ padding:'8px 14px', background:'#059669', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>Bulk Add</button>
-        </div>
-      </div>
-
-      {selWard && summary.total > 0 && (
-        <div style={{ display:'flex', gap:10, marginBottom:18 }}>
-          {[['Total', summary.total, '#4f46e5'], ['Available', summary.available, '#22c55e'], ['Occupied', summary.occupied, '#ef4444'], ['Maintenance', summary.maintenance, '#f59e0b'], ['Reserved', summary.reserved, '#8b5cf6']].map(([l,v,c]) => (
-            <div key={l} style={{ flex:1, background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:10, padding:'12px', textAlign:'center' }}>
-              <div style={{ fontSize:22, fontWeight:700, color:c }}>{v||0}</div>
-              <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>{l}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!selWard && <div style={{ textAlign:'center', padding:60, color:'#94a3b8', fontSize:13 }}>Select a ward or ICU above to manage its beds.</div>}
-
-      {selWard && beds.length === 0 && <div style={{ textAlign:'center', padding:40, color:'#94a3b8', fontSize:13 }}>No beds in this ward. Add some using the buttons above.</div>}
-
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(110px, 1fr))', gap:10 }}>
-        {beds.map(b => (
-          <div key={b.id} style={{ border:`2.5px solid ${statusColor[b.status]||'#e2e8f0'}`, borderRadius:10, padding:'12px 8px', textAlign:'center', background:'#fff', position:'relative' }}>
-            <div style={{ fontWeight:700, fontSize:14, color:'#1e293b', marginBottom:3 }}>{b.bed_number}</div>
-            <div style={{ fontSize:10, color:'#64748b', marginBottom:6 }}>{b.bed_type}</div>
-            <div style={{ fontSize:10, fontWeight:600, color: statusColor[b.status], marginBottom:8 }}>{b.status}</div>
-            <div style={{ display:'flex', gap:4, justifyContent:'center' }}>
-              <button onClick={() => changeStatus(b)} title="Cycle status" style={{ padding:'2px 6px', border:'1px solid #e2e8f0', background:'#f8fafc', borderRadius:4, fontSize:10, cursor:'pointer' }}>↻</button>
-              <button onClick={() => { setEditing(b); setForm({ bed_number:b.bed_number, ward_id:b.ward_id, bed_type:b.bed_type, status:b.status }); setModal(true); }} style={{ padding:'2px 6px', border:'1px solid #e2e8f0', background:'#f8fafc', borderRadius:4, fontSize:10, cursor:'pointer' }}>✎</button>
-              <button onClick={() => delBed(b.id)} style={{ padding:'2px 6px', border:'1px solid #fca5a5', background:'#fff', color:'#dc2626', borderRadius:4, fontSize:10, cursor:'pointer' }}>✕</button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {modal && <Modal title={editing?'Edit Bed':'Add Bed'} onClose={() => setModal(false)}>
-        <Field label="Bed Number" required><input style={inp} value={form.bed_number} onChange={e=>setForm(p=>({...p,bed_number:e.target.value}))} placeholder="e.g. W1-01" /></Field>
-        <Field label="Ward / ICU" required>
-          <select style={sel} value={form.ward_id} onChange={e=>setForm(p=>({...p,ward_id:e.target.value}))}>
-            <option value="">Select…</option>
-            {wards.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Bed Type">
-          <select style={sel} value={form.bed_type} onChange={e=>setForm(p=>({...p,bed_type:e.target.value}))}>
-            {BED_TYPES.map(t=><option key={t}>{t}</option>)}
-          </select>
-        </Field>
-        <Field label="Status">
-          <select style={sel} value={form.status} onChange={e=>setForm(p=>({...p,status:e.target.value}))}>
-            {BED_STATUSES.map(s=><option key={s}>{s}</option>)}
-          </select>
-        </Field>
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:20 }}>
-          <button onClick={()=>setModal(false)} style={{ padding:'8px 16px', border:'1.5px solid #e2e8f0', background:'none', borderRadius:7, fontSize:13, cursor:'pointer' }}>Cancel</button>
-          <button onClick={saveBed} style={{ padding:'8px 20px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:7, fontSize:13, fontWeight:600, cursor:'pointer' }}>Save</button>
-        </div>
-      </Modal>}
-
-      {bulkModal && <Modal title="Bulk Add Beds" onClose={()=>setBulkModal(false)}>
-        <Field label="Ward / ICU" required>
-          <select style={sel} value={bulk.ward_id} onChange={e=>setBulk(p=>({...p,ward_id:e.target.value}))}>
-            <option value="">Select…</option>
-            {wards.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Bed Type">
-          <select style={sel} value={bulk.bed_type} onChange={e=>setBulk(p=>({...p,bed_type:e.target.value}))}>
-            {BED_TYPES.map(t=><option key={t}>{t}</option>)}
-          </select>
-        </Field>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
-          <Field label="Prefix"><input style={inp} value={bulk.prefix} onChange={e=>setBulk(p=>({...p,prefix:e.target.value}))} placeholder="e.g. W1-" /></Field>
-          <Field label="Start No."><input style={inp} type="number" min={1} value={bulk.start_number} onChange={e=>setBulk(p=>({...p,start_number:e.target.value}))} /></Field>
-          <Field label="Count"><input style={inp} type="number" min={1} max={100} value={bulk.count} onChange={e=>setBulk(p=>({...p,count:e.target.value}))} /></Field>
-        </div>
-        <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:8, padding:'10px 14px', fontSize:13, color:'#166534', marginBottom:4 }}>
-          Preview: <strong>{previewBulk()}</strong>
-        </div>
-        <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:14 }}>
-          <button onClick={()=>setBulkModal(false)} style={{ padding:'8px 16px', border:'1.5px solid #e2e8f0', background:'none', borderRadius:7, fontSize:13, cursor:'pointer' }}>Cancel</button>
-          <button onClick={saveBulk} style={{ padding:'8px 20px', background:'#059669', color:'#fff', border:'none', borderRadius:7, fontSize:13, fontWeight:600, cursor:'pointer' }}>Create Beds</button>
-        </div>
-      </Modal>}
-    </div>
-  );
-}
-
-// ── Working Hours Tab ─────────────────────────────────────────────────────────
 function WorkingHoursTab({ showAlert }) {
   const [depts, setDepts]     = useState([]);
   const [scope, setScope]     = useState('facility');
@@ -893,7 +296,7 @@ function HolidaysTab({ showAlert }) {
   const [upcoming, setUpcoming] = useState(false);
   const [modal, setModal]       = useState(false);
   const [editing, setEditing]   = useState(null);
-  const [form, setForm]         = useState({ holiday_name:'', holiday_date:'', holiday_type:'National', is_recurring:false, scope:'network' });
+  const [form, setForm]         = useState({ holiday_name:'', holiday_date:'', holiday_type:'National', is_recurring:false });
 
   const load = async () => {
     const r = await fetch(`${API}/api/org/holidays?branch_id=${bId()}${upcoming?'&upcoming=1':''}`, { headers: hdr() });
@@ -904,13 +307,13 @@ function HolidaysTab({ showAlert }) {
 
   const open = (h) => {
     setEditing(h||null);
-    setForm(h ? { holiday_name:h.holiday_name, holiday_date:h.holiday_date?.split('T')[0]||'', holiday_type:h.holiday_type||'Hospital', is_recurring:!!h.is_recurring, scope: h.branch_id ? 'local':'network' } : { holiday_name:'', holiday_date:'', holiday_type:'National', is_recurring:false, scope:'network' });
+    setForm(h ? { holiday_name:h.holiday_name, holiday_date:h.holiday_date?.split('T')[0]||'', holiday_type:h.holiday_type||'Hospital', is_recurring:!!h.is_recurring } : { holiday_name:'', holiday_date:'', holiday_type:'National', is_recurring:false });
     setModal(true);
   };
 
   const save = async () => {
     if (!form.holiday_name || !form.holiday_date) return showAlert('Name and date are required','warning');
-    const payload = { holiday_name:form.holiday_name, holiday_date:form.holiday_date, holiday_type:form.holiday_type, is_recurring:form.is_recurring, branch_id: form.scope==='local' ? bId() : null };
+    const payload = { holiday_name:form.holiday_name, holiday_date:form.holiday_date, holiday_type:form.holiday_type, is_recurring:form.is_recurring, branch_id: null };
     const url = editing ? `${API}/api/org/holidays/${editing.id}` : `${API}/api/org/holidays`;
     const r = await fetch(url, { method: editing?'PUT':'POST', headers: hdr(), body: JSON.stringify(payload) });
     const d = await r.json();
@@ -924,11 +327,9 @@ function HolidaysTab({ showAlert }) {
     if (d.success) { load(); showAlert('Deleted','success'); }
   };
 
-  const network = holidays.filter(h => !h.branch_id);
-  const local   = holidays.filter(h => h.branch_id);
   const typeColor = { National:'blue', State:'green', Local:'yellow', Hospital:'grey' };
-
-  const HolidayTable = ({ rows }) => (
+  const rows = holidays;
+  const holidayTable = (
     <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:24 }}>
       <thead><tr style={{ background:'#f8fafc' }}>
         {['Holiday','Date','Type','Recurring',''].map(h => <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', borderBottom:'1.5px solid #e2e8f0' }}>{h}</th>)}
@@ -960,11 +361,7 @@ function HolidaysTab({ showAlert }) {
         <button onClick={() => open(null)} style={{ padding:'8px 16px', background:'#4f46e5', color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer' }}>+ Add Holiday</button>
       </div>
 
-      <h4 style={{ fontSize:13, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.6px', margin:'0 0 8px' }}>Network-wide Holidays</h4>
-      <HolidayTable rows={network} />
-
-      <h4 style={{ fontSize:13, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'.6px', margin:'0 0 8px' }}>This Facility Holidays</h4>
-      <HolidayTable rows={local} />
+      {holidayTable}
 
       {modal && <Modal title={editing?'Edit Holiday':'Add Holiday'} onClose={() => setModal(false)}>
         <Field label="Holiday Name" required><input style={inp} value={form.holiday_name} onChange={e=>setForm(p=>({...p,holiday_name:e.target.value}))} placeholder="e.g. Republic Day" /></Field>
@@ -973,12 +370,6 @@ function HolidaysTab({ showAlert }) {
           <select style={sel} value={form.holiday_type} onChange={e=>setForm(p=>({...p,holiday_type:e.target.value}))}>
             {HOL_TYPES.map(t=><option key={t}>{t}</option>)}
           </select>
-        </Field>
-        <Field label="Apply to">
-          <div style={{ display:'flex', gap:16 }}>
-            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, cursor:'pointer' }}><input type="radio" checked={form.scope==='network'} onChange={() => setForm(p=>({...p,scope:'network'}))} /> Network-wide</label>
-            <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, cursor:'pointer' }}><input type="radio" checked={form.scope==='local'} onChange={() => setForm(p=>({...p,scope:'local'}))} /> This facility only</label>
-          </div>
         </Field>
         <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, cursor:'pointer', marginTop:4 }}>
           <input type="checkbox" checked={form.is_recurring} onChange={e=>setForm(p=>({...p,is_recurring:e.target.checked}))} />
@@ -996,10 +387,7 @@ function HolidaysTab({ showAlert }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 const TABS = [
   { id:'departments',   label:'Departments' },
-  { id:'states',        label:'States' },
-  { id:'blocks',        label:'Blocks' },
   { id:'specialties',   label:'Specialties' },
-  { id:'beds',          label:'Bed Management' },
   { id:'working-hours', label:'Working Hours' },
   { id:'holidays',      label:'Holidays' },
 ];
@@ -1025,8 +413,8 @@ export default function OrgManagement() {
 
       <div className="org-page">
         <div className="org-header">
-          <h1>Organization Management</h1>
-          <p>Manage the health network hierarchy — departments, specialties, beds, working hours and holidays</p>
+          <h1>Hospital Setup</h1>
+          <p>Departments, specialties, working hours and holidays. Rooms and beds are managed in Room Management.</p>
         </div>
 
         <div className="org-tabs">
@@ -1038,10 +426,7 @@ export default function OrgManagement() {
         </div>
 
         {activeTab === 'departments'   && <DepartmentsTab  showAlert={showAlert} />}
-        {activeTab === 'states'        && <StatesTab        showAlert={showAlert} />}
-        {activeTab === 'blocks'        && <BlocksTab        showAlert={showAlert} />}
         {activeTab === 'specialties'   && <SpecialtiesTab   showAlert={showAlert} />}
-        {activeTab === 'beds'          && <BedsTab          showAlert={showAlert} />}
         {activeTab === 'working-hours' && <WorkingHoursTab  showAlert={showAlert} />}
         {activeTab === 'holidays'      && <HolidaysTab      showAlert={showAlert} />}
       </div>

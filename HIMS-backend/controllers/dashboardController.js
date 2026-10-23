@@ -1,8 +1,30 @@
 import db from '../config/db.js';
 
+// The dashboards take a district or facility from the query string, so the caller's own
+// level decides what may be asked for: state users see anything, district users only their
+// district, facility users only their facility. Returns the allowed ids, or null after a 403.
+async function allowedScope(req, res, { district_id, branch_id } = {}) {
+  const level = req.user?.role_level;
+  if (level === 'Central') return { district_id: district_id || null, branch_id: branch_id || null };
+  const [[own]] = await db.query('SELECT id, district_id FROM branches WHERE id = ?', [req.user?.branch_id]);
+  const deny = () => { res.status(403).json({ success: false, message: 'You can only view your own district or facility.' }); return null; };
+  if (!own) return deny();
+  if (level === 'Sub-Central') {
+    if (district_id && Number(district_id) !== own.district_id) return deny();
+    if (branch_id) {
+      const [[b]] = await db.query('SELECT district_id FROM branches WHERE id = ?', [branch_id]);
+      if (!b || b.district_id !== own.district_id) return deny();
+    }
+    return { district_id: own.district_id, branch_id: branch_id || null };
+  }
+  if (branch_id && Number(branch_id) !== own.id) return deny();
+  return { district_id: own.district_id, branch_id: own.id };
+}
+
 // ─── Central Admin Dashboard ──────────────────────────────────────────────────
 export const getCentralDashboardStats = async (req, res) => {
   try {
+    if (req.user?.role_level !== 'Central') return res.status(403).json({ success: false, message: 'The state-wide dashboard is for state-level users.' });
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -147,7 +169,9 @@ export const getCentralDashboardStats = async (req, res) => {
 // ─── Sub-Central Dashboard ────────────────────────────────────────────────────
 export const getSubCentralDashboardStats = async (req, res) => {
   try {
-    const { district_id } = req.query;
+    const scope = await allowedScope(req, res, { district_id: req.query.district_id });
+    if (!scope) return;
+    const district_id = scope.district_id;
     const today      = new Date().toISOString().split('T')[0];
     const yesterday  = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
@@ -271,7 +295,10 @@ export const getSubCentralDashboardStats = async (req, res) => {
 // ─── Branch / Center Dashboard ───────────────────────────────────────────────
 export const getBranchDashboardStats = async (req, res) => {
   try {
-    const { branch_id } = req.query;
+    const scope = await allowedScope(req, res, { branch_id: req.query.branch_id });
+    if (!scope) return;
+    const branch_id = scope.branch_id;
+    if (!branch_id) return res.status(400).json({ success: false, message: 'Choose a facility.' });
     const today      = new Date().toISOString().split('T')[0];
     const yesterday  = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];

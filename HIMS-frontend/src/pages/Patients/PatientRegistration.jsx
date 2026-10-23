@@ -8,13 +8,15 @@ import Alert from '../../components/Alert';
 import { useAlert } from '../../hooks/useAlert';
 import PatientDetails from './PatientDetails';
 import AppointmentBooking from '../Billing/AppointmentBooking';
+import OpBookingStep from './OpBookingStep';
 import Billing from '../Billing/Billing';
 import '../../assets/CSS/PatientRegistration.css';
 
 const TABS = [
   { id: 'details', label: 'Patient Details', num: '1' },
-  { id: 'appointment', label: 'Appointment Booking', num: '2' },
-  { id: 'billing', label: 'Billing', num: '3' },
+  { id: 'op', label: 'OP Booking', num: '2' },
+  { id: 'appointment', label: 'Lab Tests', num: '3' },
+  { id: 'billing', label: 'Billing', num: '4' },
 ];
 
 function PatientRegistration() {
@@ -23,6 +25,9 @@ function PatientRegistration() {
   const [isPatientSaved, setIsPatientSaved] = useState(false);
   const [patientRegNo, setPatientRegNo] = useState(null);
   const [bookingData, setBookingData] = useState(null);
+  // The doctor consultation booked on the OP Booking step, carried into billing.
+  const [opAppointment, setOpAppointment] = useState(null);
+  const [opKey, setOpKey] = useState(0);
   const [detailsKey, setDetailsKey] = useState(0);
   const [labName, setLabName] = useState('Loading...');
 
@@ -59,8 +64,9 @@ function PatientRegistration() {
     const handleTabSwitch = (e) => {
       if (e.altKey) {
         if (e.key === '1') { e.preventDefault(); setActiveTab('details'); }
-        if (e.key === '2' && isPatientSaved) { e.preventDefault(); setActiveTab('appointment'); }
-        if (e.key === '3' && isPatientSaved) { e.preventDefault(); setActiveTab('billing'); }
+        if (e.key === '2' && isPatientSaved) { e.preventDefault(); setActiveTab('op'); }
+        if (e.key === '3' && isPatientSaved) { e.preventDefault(); setActiveTab('appointment'); }
+        if (e.key === '4' && isPatientSaved) { e.preventDefault(); setActiveTab('billing'); }
       }
     };
     window.addEventListener('keydown', handleTabSwitch);
@@ -70,11 +76,19 @@ function PatientRegistration() {
   const handlePatientSaved = (regNo) => {
     setPatientRegNo(regNo);
     setIsPatientSaved(true);
-    setActiveTab('appointment');
+    setActiveTab('op');
+  };
+
+  // From the OP Booking step: the booked consultation (or null when skipped)
+  // and where to go next — lab tests or straight to billing.
+  const handleOpContinue = (appointment, next) => {
+    setOpAppointment(appointment);
+    if (next === 'billing') setBookingData({ mode: 'doctor', appointment, labTests: [] });
+    setActiveTab(next === 'billing' ? 'billing' : 'appointment');
   };
 
   const handleAppointmentSaved = (data) => {
-    setBookingData(data);
+    setBookingData({ ...data, appointment: data.appointment || opAppointment });
     setActiveTab('billing');
   };
 
@@ -83,6 +97,8 @@ function PatientRegistration() {
     setIsPatientSaved(false);
     setPatientRegNo(null);
     setBookingData(null);
+    setOpAppointment(null);
+    setOpKey(k => k + 1);
     setDetailsKey(k => k + 1);
   };
 
@@ -103,7 +119,7 @@ function PatientRegistration() {
       if (result.success) {
         setPatientRegNo(result.patient.reg_no);
         setIsPatientSaved(true); // Treat as saved since they exist
-        setActiveTab('appointment'); // Jump them to appointment
+        setActiveTab('op'); // Jump them to OP booking
         showAlert(`Found returning patient: ${result.patient.first_name} ${result.patient.last_name}`, 'success');
       } else {
         showAlert('No patient found. Please proceed with new registration.', 'warning');
@@ -187,6 +203,11 @@ function PatientRegistration() {
         <div style={{ display: activeTab === 'details' ? 'contents' : 'none' }}>
           <PatientDetails key={detailsKey} onSaveSuccess={handlePatientSaved} />
         </div>
+        {isPatientSaved && (
+          <div style={{ display: activeTab === 'op' ? 'contents' : 'none' }}>
+            <OpBookingStep key={`${opKey}-${patientRegNo}`} regNo={patientRegNo} onContinue={handleOpContinue} active={activeTab === 'op'} />
+          </div>
+        )}
         {activeTab === 'appointment' && <AppointmentBooking regNo={patientRegNo} onSaveSuccess={handleAppointmentSaved} />}
         {activeTab === 'billing' && <Billing regNo={patientRegNo} bookingData={bookingData} />}
 

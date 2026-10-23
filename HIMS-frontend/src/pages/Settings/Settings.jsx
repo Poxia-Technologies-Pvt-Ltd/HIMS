@@ -6,6 +6,7 @@ import {
   Bell,
   Globe,
   Hospital,
+  FileSignature,
   Plus,
   Trash2,
   Pencil,
@@ -14,7 +15,9 @@ import {
   AlertCircle
 } from 'lucide-react';
 import Alert from '../../components/Alert';
+import ReportSigning from './ReportSigning';
 import { useAlert } from '../../hooks/useAlert';
+import { refreshHospitalBranding } from '../../hooks/useHospital';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 const tok = () => localStorage.getItem('hims_token');
@@ -36,10 +39,12 @@ function Settings() {
   const [editDistrictName, setEditDistrictName] = useState('');
 
   const roleLevel = localStorage.getItem('role_level') || 'Branch';
+  // Digital Signature Certificates are set up by each hospital's admin.
+  const isAdmin = ['admin', 'super admin'].includes(String(localStorage.getItem('role') || '').toLowerCase());
 
   const [form, setForm] = useState({
-    hospital_name: 'MERIL HIMS',
-    logo_url: '/meril_hims_logo.png',
+    hospital_name: '',
+    logo_url: '',
     address: '',
     phone: '',
     website: '',
@@ -59,7 +64,7 @@ function Settings() {
       const data = await res.json();
       if (data.success && data.data) {
         setForm({
-          hospital_name: data.data.hospital_name || 'MERIL HIMS',
+          hospital_name: data.data.hospital_name || '',
           logo_url: data.data.logo_url || '',
           address: data.data.address || '',
           phone: data.data.phone || '',
@@ -136,6 +141,7 @@ function Settings() {
       const data = await res.json();
       if (data.success) {
         showAlert('success', 'Hospital Settings updated successfully');
+        refreshHospitalBranding();
         // This won't automatically update Sidebar unless Sidebar uses Context,
         // but for now, we'll force a reload if they want to see the new logo globally.
         setTimeout(() => {
@@ -246,6 +252,14 @@ function Settings() {
           >
             <Globe size={18} /> Localization
           </button>
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('signing')}
+              style={{ width: '100%', textAlign: 'left', padding: '12px 16px', border: 'none', background: activeTab === 'signing' ? 'var(--blue-pale)' : 'transparent', color: activeTab === 'signing' ? 'var(--blue-primary)' : 'var(--text-mid)', fontWeight: 600, borderRadius: '8px', cursor: 'pointer', marginBottom: '8px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '10px' }}
+            >
+              <FileSignature size={18} /> Digital Signature (DSC)
+            </button>
+          )}
           {(roleLevel === 'Central' || roleLevel === 'Sub-Central') && (
             <button
               onClick={() => setActiveTab('facilities')}
@@ -523,7 +537,7 @@ function Settings() {
               <p style={{ fontSize: '13px', color: 'var(--text-soft)', marginBottom: '24px' }}>Configure default fees and billing-related parameters.</p>
 
               <div style={{ maxWidth: '400px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-label)', marginBottom: '8px' }}>Patient Registration Fee (₹)</label>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-label)', marginBottom: '8px' }}>Default Registration Fee (₹)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -533,7 +547,7 @@ function Settings() {
                   onChange={e => setForm({ ...form, registration_fee: e.target.value ? parseFloat(e.target.value) : '' })}
                   style={{ width: '100%', padding: '10px 14px', border: '1px solid var(--border-light)', borderRadius: '6px', background: 'var(--bg-input)' }}
                 />
-                <small style={{ color: 'var(--text-soft)', marginTop: '4px', display: 'block' }}>This fee is automatically applied in the Billing tab for new patient registrations.</small>
+                <small style={{ color: 'var(--text-soft)', marginTop: '4px', display: 'block' }}>Used only by hospitals that have no Payment Settings of their own. Set each hospital's fee, when it is charged (first registration only, every visit, or renewal) and its payment rules in <a href="/payment-settings">Payment Settings</a>.</small>
               </div>
 
               <div style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid var(--border-light)', display: 'flex', justifyContent: 'flex-end' }}>
@@ -548,7 +562,9 @@ function Settings() {
             </form>
           )}
 
-          {activeTab !== 'about' && activeTab !== 'email' && activeTab !== 'facilities' && activeTab !== 'localization' && activeTab !== 'billing' && (
+          {activeTab === 'signing' && isAdmin && <ReportSigning embedded />}
+
+          {activeTab !== 'about' && activeTab !== 'email' && activeTab !== 'facilities' && activeTab !== 'localization' && activeTab !== 'billing' && activeTab !== 'signing' && (
             <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-soft)' }}>
               <h3>Module Under Construction</h3>
               <p>Additional configuration options will be available soon.</p>

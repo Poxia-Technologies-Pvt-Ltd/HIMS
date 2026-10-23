@@ -1,5 +1,6 @@
 import db from '../config/db.js';
 import bcrypt from 'bcryptjs';
+import { passwordProblem } from '../utils/passwordPolicy.js';
 
 // Branch scope helper — Branch-level users only see their own branch
 const branchScope = (req) => {
@@ -27,8 +28,11 @@ export const getStaffStats = async (req, res) => {
 
 export const getDoctors = async (req, res) => {
   try {
+    const scope = branchScope(req);
     const [rows] = await db.query(
-      'SELECT first_name, last_name, department FROM users WHERE role = "Doctor" ORDER BY department, first_name'
+      `SELECT id, first_name, last_name, department FROM users
+        WHERE role = 'Doctor' AND is_active = 1 ${scope ? 'AND branch_id = ?' : ''} ORDER BY department, first_name`,
+      scope ? [scope] : []
     );
     res.json({ success: true, doctors: rows });
   } catch (e) {
@@ -69,6 +73,8 @@ export const addStaff = async (req, res) => {
     if (!email || !password || !role) {
       return res.status(400).json({ success: false, message: 'email, password and role are required' });
     }
+    const problem = passwordProblem(password);
+    if (problem) return res.status(400).json({ success: false, message: problem });
 
     // Determine branch: Branch-level admin can only create staff in their own branch
     const callerScope = branchScope(req);
@@ -184,8 +190,9 @@ export const resetStaffPassword = async (req, res) => {
     // Matches the 8-character minimum authController enforces on self-service
     // password changes; the developer route's older 6 is weaker than the
     // policy the user will be held to on their next change.
-    if (!password || password.length < 8) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+    const problem = passwordProblem(password);
+    if (problem) {
+      return res.status(400).json({ success: false, message: problem });
     }
 
     const member = await loadTargetStaff(req, res);

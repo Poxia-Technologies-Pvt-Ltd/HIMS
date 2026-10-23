@@ -12,12 +12,16 @@ export function useCaptcha() {
   // value must be set synchronously (not from inside the effect) to satisfy
   // react-hooks/set-state-in-effect.
   const [loadingCaptcha, setLoadingCaptcha] = useState(true);
+  // False when the server has captchas switched off (LOGIN_CAPTCHA); forms
+  // then hide the field and skip the check.
+  const [captchaEnabled, setCaptchaEnabled] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoadingCaptcha(true);
     try {
       const res = await fetch(`${API_BASE}/api/auth/captcha`);
       const data = await res.json();
+      setCaptchaEnabled(!data.disabled);
       setSvg(data.svg || '');
       setCaptchaId(data.captchaId || '');
     } catch {
@@ -49,6 +53,7 @@ export function useCaptcha() {
       .then(res => res.json())
       .then(data => {
         if (ignore) return;
+        setCaptchaEnabled(!data.disabled);
         setSvg(data.svg || '');
         setCaptchaId(data.captchaId || '');
       })
@@ -63,5 +68,5 @@ export function useCaptcha() {
     return () => { ignore = true; };
   }, []);
 
-  return { svg, captchaId, refresh, applyCaptcha, loadingCaptcha };
+  return { svg, captchaId, refresh, applyCaptcha, loadingCaptcha, captchaEnabled };
 }

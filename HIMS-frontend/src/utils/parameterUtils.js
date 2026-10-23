@@ -21,6 +21,15 @@ export const createEmptyParameter = () => ({
   kids_min_value: '',
   kids_max_value: '',
   
+  // Flagging rules (blank = not set)
+  critical_low: '',
+  critical_high: '',
+  measurable_min: '',
+  measurable_max: '',
+  delta_percent: '',
+  delta_absolute: '',
+  delta_days: '',
+
   // Calculated field
   is_calculated: false,
   formula: '',

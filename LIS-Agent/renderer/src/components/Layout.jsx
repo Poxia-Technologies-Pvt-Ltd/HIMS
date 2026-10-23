@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import Sidebar from './Sidebar';
+import OfflineBanner from './OfflineBanner';
 
 const Layout = ({ children }) => {
   const [toast, setToast] = useState(null);
@@ -24,6 +25,7 @@ const Layout = ({ children }) => {
     <div className="app-shell">
       <Sidebar />
       <main className="app-main">
+        <OfflineBanner />
         {children}
       </main>
 

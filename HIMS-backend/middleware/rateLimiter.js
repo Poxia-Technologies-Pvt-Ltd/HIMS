@@ -72,12 +72,55 @@ export const otpLimiter = rateLimit({
 // Public, unauthenticated lookup endpoints (e.g. lab report tracking by
 // reference number) — slows down enumeration attempts regardless of how
 // strong the underlying identifier is.
+// The doctor's Poxia DSC Agent talks to the server with a one-time job token, a few calls per signing.
+export const dscAgentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many signing requests. Please try again shortly.' },
+});
+
 export const publicLookupLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests. Please try again in 15 minutes.' },
+});
+
+// Lobby TV queue board (/lab/kiosk-tokens). Polled every 8s by an unattended
+// screen, i.e. ~110 requests per 15 minutes from one IP — well over
+// publicLookupLimiter's 20, which is sized for identity lookups and froze the
+// board after a couple of minutes. Safe to be generous: the response is
+// token numbers only, nothing that identifies a patient.
+export const tokenBoardLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 400,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please try again shortly.' },
+});
+
+// Kiosk self-service tokens (/lab/kiosk-token). One lobby kiosk is one IP
+// issuing a token per patient — a busy morning is a few a minute — so this
+// sits between the identity-lookup limit and the board-polling one.
+export const kioskTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many token requests. Please ask at the counter.' },
+});
+
+// Kiosk payment status: polled every few seconds while a UPI QR is on the
+// lobby screen. The response is only a status and token number.
+export const kioskPayStatusLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 900,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please try again shortly.' },
 });
 
 // Forgot-password — tightly bounded: each request sends a real email, so
@@ -125,4 +168,24 @@ export const careInboundLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Too many requests. Please try again in 15 minutes.' },
+});
+
+// Portal one-time-password endpoints. The per-phone limits (3 codes / 15 min, 5 wrong tries) are in
+// services/otpService.js; this per-network limit is looser because a hospital shares one address.
+export const portalOtpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests from this network. Please try again in 10 minutes.' },
+});
+
+// Patient-portal appointment booking/cancelling. Reads (slot lists) are not
+// limited here; this bounds scripted slot-hoarding from one network.
+export const portalBookingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many booking requests. Please try again in 15 minutes.' },
 });

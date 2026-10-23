@@ -12,6 +12,21 @@ const ADMIN_ROLES = ['Admin', 'Super Admin'];
 const stripHtml = (value) =>
   typeof value === 'string' ? value.replace(/<[^>]*>/g, '').trim() : value;
 
+// GET /api/settings/branding — public: the start page and sign-in screens
+// show the hospital's name and logo before anyone is signed in. Only display
+// fields leave here.
+export const getBranding = async (req, res) => {
+  try {
+    const [[s]] = await db.query(
+      'SELECT hospital_name, logo_url, address, phone, email, website FROM hospital_settings ORDER BY id LIMIT 1'
+    );
+    res.json({ success: true, branding: s || { hospital_name: 'Hospital' } });
+  } catch (error) {
+    console.error('Error fetching branding:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
 export const getSettings = async (req, res) => {
   try {
     const [settings] = await db.query(`SELECT * FROM hospital_settings LIMIT 1`);
@@ -70,6 +85,14 @@ export const updateSettings = async (req, res) => {
          smtp_host, smtp_port || 587, smtp_user, smtp_pass, smtp_from_name, registration_fee || 15.00]
       );
     }
+
+    // Single hospital: its facility record carries the same name and contact
+    // details, which reports, invoices and payslips print.
+    await db.query(
+      `UPDATE branches SET branch_name = COALESCE(NULLIF(?, ''), branch_name), address = ?, contact_number = ?
+        WHERE id = (SELECT id FROM (SELECT MIN(id) AS id FROM branches) b)`,
+      [hospital_name, address || null, phone || null]
+    );
 
     res.json({ success: true, message: 'Settings updated successfully' });
   } catch (error) {

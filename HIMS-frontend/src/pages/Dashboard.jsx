@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Search
 } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 import '../assets/CSS/Dashboard.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -227,6 +228,7 @@ function ChartsRow({ data, trendPoints }) {
 }
 
 function FacilityTable({ perBranch }) {
+  const navigate = useNavigate();
   return (
     <div className="dash-card dash-table-card">
       <div className="dash-card-header">
@@ -238,7 +240,7 @@ function FacilityTable({ perBranch }) {
           <thead><tr><th>Facility</th><th>Level</th><th>Patients</th><th>Tests</th><th>Pending</th><th>Revenue</th></tr></thead>
           <tbody>
             {(perBranch || []).map(b => (
-              <tr key={b.id}>
+              <tr key={b.id} style={{ cursor: 'pointer' }} title="Open this facility's detailed analytics" onClick={() => navigate(`/programme-dashboard?branch_id=${b.id}`)}>
                 <td><div className="dash-tbl-name">{b.branch_name}</div><div className="dash-tbl-code">{b.hospital_code}</div></td>
                 <td><span className="dash-level-badge" style={{ background: LEVEL_BG[b.branch_level] || '#f1f5f9', color: LEVEL_COLOR[b.branch_level] || '#475569' }}>{b.branch_level || 'Center'}</span></td>
                 <td className="dash-tbl-num">{b.today_patients}</td>
@@ -341,6 +343,7 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="dash-topbar-right">
+          <Link to="/programme-dashboard" className="dash-live-text" style={{ marginRight: 16, textDecoration: 'underline', color: 'inherit' }}>Date range, drill-down &amp; export →</Link>
           <span className="dash-live-dot" /><span className="dash-live-text">Live</span>
         </div>
       </header>

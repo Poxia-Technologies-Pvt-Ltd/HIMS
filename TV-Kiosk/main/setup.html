@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TV Kiosk Setup</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: grid; place-items: center;
+    background: #0f172a; color: #e2e8f0;
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    user-select: none;
+  }
+  .card { width: min(560px, 92vw); }
+  h1 { font-size: 24px; font-weight: 750; margin: 0 0 6px; }
+  .sub { color: #94a3b8; font-size: 14px; margin: 0 0 26px; }
+  label { display: block; font-size: 11.5px; text-transform: uppercase;
+          letter-spacing: .07em; color: #94a3b8; font-weight: 700; margin-bottom: 8px; }
+  select {
+    width: 100%; padding: 14px 15px; font-size: 16px; border-radius: 11px;
+    border: 1px solid #334155; background: #1e293b; color: #e2e8f0; outline: none;
+  }
+  select:focus { border-color: #38bdf8; }
+  button {
+    margin-top: 18px; width: 100%; padding: 15px; font-size: 16px; font-weight: 700;
+    border: 0; border-radius: 11px; cursor: pointer;
+    background: linear-gradient(135deg, #4f46e5, #0ea5e9); color: #fff;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .msg { margin-top: 16px; font-size: 13.5px; min-height: 20px; }
+  .msg.err { color: #fca5a5; }
+  .foot { margin-top: 26px; font-size: 12px; color: #64748b; line-height: 1.6; }
+  .card[hidden] { display: none; }
+
+  /* The calibration layer covers the whole panel. */
+  /* Black outside the marked area, exactly as the board will be — the
+     operator is looking at the finished result while they drag. */
+  #calib { position: fixed; inset: 0; background: #000; }
+  #calib[hidden] { display: none; }
+  #edge { position: absolute; border: 4px dashed #38bdf8;
+    background: #0f1e33; pointer-events: none; }
+
+  /* Handles sit ON the corners and are big enough to grab on a touch screen
+     or hit with a mouse from across a room. */
+  .handle { position: absolute; width: 76px; height: 76px; border-radius: 50%;
+    background: #38bdf8; box-shadow: 0 0 0 6px rgba(56,189,248,.25);
+    cursor: grab; touch-action: none; transform: translate(-50%, -50%);
+    display: grid; place-items: center; }
+  .handle span { font-size: 26px; font-weight: 900; color: #06283d; }
+  .handle:active { cursor: grabbing; background: #0ea5e9; }
+
+  #calibbox { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: min(560px, 78vw); text-align: center; }
+  #calibbox h1 { font-size: 30px; margin-bottom: 8px; }
+  #calibbox p { color: #94a3b8; font-size: 15px; margin: 0 0 20px; line-height: 1.6; }
+  .calibrow { display: flex; gap: 8px; }
+  .calibrow button { flex: 1; margin-top: 0; padding: 13px; font-size: 15px;
+    background: #1e293b; border: 1px solid #334155; }
+  .readout { margin-top: 14px; font-family: ui-monospace, Menlo, monospace;
+    font-size: 12.5px; color: #64748b; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Which hospital is this TV in?</h1>
+    <p class="sub">Asked once. The display remembers it from then on, including after updates.</p>
+
+    <label for="branch">Hospital</label>
+    <select id="branch" disabled><option>Loading hospitals…</option></select>
+    <button id="go" disabled>Start display</button>
+    <div class="msg" id="msg"></div>
+
+    <p class="foot">
+      The board shows only the queue — no patient details, no login, nothing to sign out of.<br>
+      Press <strong>Ctrl + T</strong> (⌘ T on Mac) any time to reopen these settings ·
+      <strong>Esc five times</strong> closes the display.
+    </p>
+  </div>
+
+  <!-- ── Step 2: the whole screen is the calibration surface ────────────
+       Overscan can only be judged on the panel itself. A preview box inside a
+       card tells the operator nothing about where THIS television starts
+       cropping, so the calibration takes the entire display and the four
+       handles sit at its real corners. -->
+  <div id="calib" hidden>
+    <div id="edge"></div>
+
+    <div class="handle" data-c="tl"><span>1</span></div>
+    <div class="handle" data-c="tr"><span>2</span></div>
+    <div class="handle" data-c="bl"><span>3</span></div>
+    <div class="handle" data-c="br"><span>4</span></div>
+
+    <div id="calibbox">
+      <h1>Drag the four corners</h1>
+      <p>Move each corner marker until you can see it on the television.<br>
+         Everything inside the dashed line is what the display will use.</p>
+      <div class="calibrow">
+        <button class="ghost" id="nudgeIn">Shrink</button>
+        <button class="ghost" id="nudgeOut">Expand</button>
+        <button class="ghost" id="reset">Reset</button>
+      </div>
+      <div class="readout" id="readout"></div>
+      <button id="done">Next: choose printer</button>
+      <div class="msg" id="msg2"></div>
+    </div>
+  </div>
+
+  <!-- ── Step 3: which printer reports come out of ─────────────────────
+       Chosen rather than guessed. A lobby PC often has several queues and the
+       one Windows flags as default is frequently a PDF writer, which accepts
+       every job and produces nothing a patient can collect. -->
+  <div class="card" id="prn" hidden>
+    <h1>Which printer?</h1>
+    <p class="sub">Reports printed at this kiosk come out of the printer you choose here.</p>
+
+    <label for="printer">Printer</label>
+    <select id="printer"><option>Looking for printers…</option></select>
+    <div class="msg" id="msg3"></div>
+    <button id="finish">Start display</button>
+
+    <p class="foot">
+      No printer? Choose <strong>Printing turned off</strong> and patients can still
+      send reports to WhatsApp.
+    </p>
+  </div>
+
+<script>
+  const sel = document.getElementById('branch');
+  const go = document.getElementById('go');
+  const msg = document.getElementById('msg');
+
+  function fail(text) {
+    msg.className = 'msg err';
+    msg.textContent = text;
+  }
+
+  async function loadBranches() {
+    const res = await window.kiosk.fetchBranches();
+    if (!res.success || !res.branches.length) {
+      sel.innerHTML = '<option>Could not load</option>';
+      // Retrying rather than dead-ending: this runs on a lobby machine that may
+      // be switched on before the network is up.
+      fail((res.message || 'No hospitals returned') + ' — retrying in 10s');
+      setTimeout(loadBranches, 10000);
+      return;
+    }
+
+    const active = res.branches.filter((b) => b.status !== 'Inactive');
+    sel.innerHTML = active
+      .map((b) => `<option value="${b.id}">${b.branch_name}${b.hospital_code ? ' — ' + b.hospital_code : ''}</option>`)
+      .join('');
+    sel.disabled = false;
+    go.disabled = false;
+    msg.className = 'msg';
+    msg.textContent = `${active.length} hospital(s) available.`;
+  }
+
+  // ── Step 2: calibration ───────────────────────────────────────────────
+  // Percentages, not pixels: a lobby TV may be swapped or the resolution
+  // changed, and an inset measured in pixels would then be wrong.
+  let inset = { top: 0, right: 0, bottom: 0, left: 0 };
+  const edge = document.getElementById('edge');
+  const branchStep = document.querySelector('.card');   // step 1
+  const calib = document.getElementById('calib');
+
+  function paint() {
+    edge.style.top = inset.top + '%';
+    edge.style.left = inset.left + '%';
+    edge.style.right = inset.right + '%';
+    edge.style.bottom = inset.bottom + '%';
+    document.getElementById('readout').textContent =
+      `top ${inset.top}%  right ${inset.right}%  bottom ${inset.bottom}%  left ${inset.left}%`;
+    const pos = {
+      tl: [inset.left, inset.top], tr: [100 - inset.right, inset.top],
+      bl: [inset.left, 100 - inset.bottom], br: [100 - inset.right, 100 - inset.bottom],
+    };
+    for (const h of document.querySelectorAll('.handle')) {
+      const [x, y] = pos[h.dataset.c];
+      h.style.left = x + '%';
+      h.style.top = y + '%';
+    }
+  }
+
+  const clamp = (v) => Math.max(0, Math.min(20, Number(v.toFixed(2))));
+
+  for (const h of document.querySelectorAll('.handle')) {
+    h.addEventListener('pointerdown', (e) => {
+      h.setPointerCapture(e.pointerId);
+      const move = (ev) => {
+        // Measured against the screen itself — this layer IS the display.
+        const x = (ev.clientX / window.innerWidth) * 100;
+        const y = (ev.clientY / window.innerHeight) * 100;
+        const c = h.dataset.c;
+        if (c[0] === 't') inset.top = clamp(y); else inset.bottom = clamp(100 - y);
+        if (c[1] === 'l') inset.left = clamp(x); else inset.right = clamp(100 - x);
+        paint();
+      };
+      const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); };
+      h.addEventListener('pointermove', move);
+      h.addEventListener('pointerup', up);
+    });
+  }
+
+  // Buttons for a TV with no touch screen and only a mouse.
+  const nudge = (d) => {
+    for (const k of ['top', 'right', 'bottom', 'left']) inset[k] = clamp(inset[k] + d);
+    paint();
+  };
+  document.getElementById('nudgeIn').addEventListener('click', () => nudge(0.5));
+  document.getElementById('nudgeOut').addEventListener('click', () => nudge(-0.5));
+  document.getElementById('reset').addEventListener('click', () => {
+    inset = { top: 0, right: 0, bottom: 0, left: 0 };
+    paint();
+  });
+
+  go.addEventListener('click', () => {
+    branchStep.hidden = true;
+    calib.hidden = false;
+    paint();
+  });
+
+  const prnSel = document.getElementById('printer');
+
+  document.getElementById('done').addEventListener('click', async () => {
+    calib.hidden = true;
+    document.getElementById('prn').hidden = false;
+
+    const printers = await window.kiosk.listPrinters();
+    // "Turned off" is first and always available: a lobby with no printer is a
+    // normal deployment, not a misconfiguration to be nagged about.
+    const opts = ['<option value="">Printing turned off — WhatsApp only</option>'];
+    for (const p of printers) {
+      opts.push(`<option value="${p.name}"${p.isDefault ? ' selected' : ''}>` +
+        `${p.display}${p.virtual ? ' (file / PDF — not a real printer)' : ''}` +
+        `${p.isDefault ? ' · Windows default' : ''}</option>`);
+    }
+    prnSel.innerHTML = opts.join('');
+    document.getElementById('msg3').textContent = printers.length
+      ? `${printers.length} printer(s) found.`
+      : 'No printers found on this computer.';
+  });
+
+  document.getElementById('finish').addEventListener('click', async () => {
+    const btn = document.getElementById('finish');
+    btn.disabled = true;
+    document.getElementById('msg3').textContent = 'Saving…';
+    const res = await window.kiosk.saveConfig({
+      branchId: sel.value,
+      branchName: sel.options[sel.selectedIndex]?.text || '',
+      inset,
+      printerName: prnSel.value,
+    });
+    if (!res.success) {
+      btn.disabled = false;
+      document.getElementById('msg3').className = 'msg err';
+      document.getElementById('msg3').textContent = res.message || 'Could not save';
+    }
+    // On success the main process swaps this page for the board itself.
+  });
+
+  loadBranches();
+</script>
+</body>
+</html>

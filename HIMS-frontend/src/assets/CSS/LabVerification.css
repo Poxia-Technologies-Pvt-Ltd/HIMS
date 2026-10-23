@@ -564,3 +564,16 @@ tr.flag-critical {
   color: #b91c1c;
   border-color: #fecaca;
 }
+
+/* Server-computed result flags */
+tr.flag-critical-high .result-value, tr.flag-critical-low .result-value { color: #7f1d1d; font-weight: 900; }
+tr.flag-critical-high, tr.flag-critical-low { background: #fef2f2; }
+tr.flag-invalid .result-value { color: #64748b; text-decoration: line-through; font-weight: 700; }
+tr.flag-invalid { background: #f1f5f9; }
+.flag-cell { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.flag-badge.critical-high, .flag-badge.critical-low { background: #fecaca; color: #7f1d1d; animation: pulse 1.2s infinite; }
+.flag-badge.invalid { background: #e2e8f0; color: #334155; }
+.flag-badge.delta { background: #ede9fe; color: #5b21b6; }
+
+.verify-btn:disabled, .approve-btn:disabled { opacity: .45; cursor: not-allowed; }
+.wf-blocked { flex-basis: 100%; font-size: 11px; color: #92400e; max-width: 260px; line-height: 1.3; }

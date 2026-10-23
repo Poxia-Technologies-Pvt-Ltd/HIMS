@@ -6,6 +6,7 @@ const axios = require('./apiClient');
 const deviceKeyStore = require('./deviceKeyStore');
 const resultQueue = require('./resultQueue');
 const networkMonitor = require('./networkMonitor');
+const offlineSync = require('./offlineSync');
 const db = require(path.join(__dirname, "../db/sqlite.js"));
 const serialManager = require("./serialManager");
 const tcpManager = require("./tcpManager");
@@ -463,6 +464,20 @@ if (!gotTheLock) {
   ipcMain.handle('retry-result', (event, id) => resultQueue.pushOne(id));
   ipcMain.handle('retry-all-results', () => resultQueue.retryAll());
   ipcMain.handle('get-network-status', () => ({ online: networkMonitor.isOnline() }));
+
+  // Offline registration and sample collection (tender #59) — see offlineSync.js.
+  ipcMain.handle('offline-get-state', () => offlineSync.getState());
+  ipcMain.handle('offline-sync-now', () => offlineSync.syncAll({ force: true }));
+  ipcMain.handle('offline-field-config', () => offlineSync.getFieldConfig());
+  ipcMain.handle('offline-register-patient', (event, form) => offlineSync.registerPatient(form));
+  ipcMain.handle('offline-list-registrations', () => offlineSync.listRegistrations());
+  ipcMain.handle('offline-resolve-registration', (event, { id, ...rest }) => offlineSync.resolveRegistration(id, rest));
+  ipcMain.handle('offline-list-orders', (event, opts) => offlineSync.listOrders(opts));
+  ipcMain.handle('offline-get-order', (event, billId) => offlineSync.getOrder(billId));
+  ipcMain.handle('offline-collect-order', (event, billId) => offlineSync.collectOrder(billId));
+  ipcMain.handle('offline-refresh-orders', () => offlineSync.refreshSnapshot());
+  ipcMain.handle('offline-list-collections', () => offlineSync.listCollections());
+  ipcMain.handle('offline-resolve-collection', (event, { id, ...rest }) => offlineSync.resolveCollection(id, rest));
   ipcMain.handle('map-unmapped-result', async (event, { id, sampleId }) => {
     if (!sampleId || !String(sampleId).trim()) {
       return { ok: false, message: 'Enter the sample ID to map this result to.' };
@@ -547,7 +562,13 @@ if (!gotTheLock) {
   // moment connectivity returns, so nobody has to remember to click Retry
   // after a blip.
   resultQueue.setWindow(() => win);
-  networkMonitor.start(() => win, () => resultQueue.retryAll());
+  offlineSync.setWindow(() => win);
+  networkMonitor.start(() => win, () => {
+    resultQueue.retryAll();
+    // Back online: replay what was registered / collected while it was down.
+    offlineSync.syncAll({ force: true });
+  });
+  offlineSync.start(() => win);
 });
 
   // Prevent app from quitting when all windows are closed — keep alive in tray

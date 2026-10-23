@@ -82,6 +82,20 @@ export const authenticateToken = async (req, res, next) => {
 
   req.user = decoded;
 
+  // A deactivated account (HR status change, User Management) loses its
+  // already-issued sessions too, not just the next login — the JWT itself
+  // lives for 30 days.
+  if (decoded.id) {
+    try {
+      const [[u]] = await db.query('SELECT is_active FROM users WHERE id = ?', [decoded.id]);
+      if (!u || u.is_active === 0) {
+        return res.status(401).json({ message: 'This account has been deactivated.' });
+      }
+    } catch (err) {
+      console.error('authenticateToken is_active check failed:', err.message);
+    }
+  }
+
   // CSRF only protects ambient (cookie-based) auth — a request can only be
   // forged cross-site if the browser attaches credentials on its own. A
   // Bearer token has to be deliberately attached by the caller (LIS-Agent's

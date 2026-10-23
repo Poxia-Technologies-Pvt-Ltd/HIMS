@@ -1,0 +1,12 @@
+{
+  "appId": "in.gov.karnataka.lims.field",
+  "appName": "KA LIMS Field",
+  "webDir": "dist",
+  "server": {
+    "url": "https://ka-lims.poxiatechnologies.com/field",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": { "allowMixedContent": false },
+  "ios": { "contentInset": "always" }
+}

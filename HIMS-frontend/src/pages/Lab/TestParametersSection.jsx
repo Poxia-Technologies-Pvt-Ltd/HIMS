@@ -385,6 +385,33 @@ const TestParametersSection = ({
                         </div>
                       </div>
 
+                      {/* Result flagging rules */}
+                      <div className="flag-rules-section">
+                        <h5>Result flagging rules</h5>
+                        <div className="flag-rules-grid">
+                          {[
+                            ['critical_low', 'Critical low (≤)', 'Value at or below this is Critical'],
+                            ['critical_high', 'Critical high (≥)', 'Value at or above this is Critical'],
+                            ['measurable_min', 'Measurable min', 'Below this the reading is invalid'],
+                            ['measurable_max', 'Measurable max', 'Above this the reading is invalid'],
+                            ['delta_percent', 'Delta limit (%)', 'Flag if changed by more than this % since the last result'],
+                            ['delta_absolute', 'Delta limit (absolute)', 'Or by more than this amount'],
+                            ['delta_days', 'Delta window (days)', 'Only compare with results this recent'],
+                          ].map(([key, label, hint]) => (
+                            <label key={key} title={hint}>
+                              <span>{label}</span>
+                              <input
+                                type="number"
+                                step="any"
+                                value={param[key] ?? ''}
+                                onChange={(e) => handleParamChange(index, key, e.target.value)}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <small className="flag-rules-note">Leave blank to use the department / facility defaults. Abnormal (High / Low) uses the reference range above.</small>
+                      </div>
+
                       {/* Demographic Ranges Toggle */}
                       <div className="form-group checkbox-group">
                         <label className="checkbox-label">

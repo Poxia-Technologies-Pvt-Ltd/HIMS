@@ -1,25 +1,22 @@
 import React from 'react';
 import { Activity, AlertTriangle, Thermometer, ShieldCheck } from 'lucide-react';
-import { JHARKHAND_DATA, getRiskLevel } from '../../data/disasterMockData';
 
-const SummaryCards = ({ data = [] }) => {
-  const totalCases = data.reduce((sum, item) => sum + item.cases, 0);
-  const highRiskCount = data.filter(d => d.risk_level === "HIGH").length;
-  
-  const diseaseCounts = data.reduce((acc, curr) => {
-    acc[curr.disease] = (acc[curr.disease] || 0) + curr.cases;
-    return acc;
-  }, {});
-  
-  const sortedDiseases = Object.entries(diseaseCounts).sort((a, b) => b[1] - a[1]);
-  const mostAffectedDisease = sortedDiseases.length > 0 ? sortedDiseases[0][0] : 'None';
-  const activeDistricts = [...new Set(data.map(d => d.district))].length;
+const SummaryCards = ({ data = [], byDistrict = [], loading }) => {
+  const totalCases = data.reduce((sum, r) => sum + r.cases, 0);
+  const prevCases = data.reduce((sum, r) => sum + r.prev_cases, 0);
+  const change = prevCases ? Math.round(((totalCases - prevCases) / prevCases) * 100) : null;
+  const highRisk = byDistrict.filter((d) => d.risk_level === 'HIGH').length;
+  const rising = byDistrict.filter((d) => d.direction === 'rising').length;
+
+  const diseaseCounts = data.reduce((acc, r) => ({ ...acc, [r.disease]: (acc[r.disease] || 0) + r.cases }), {});
+  const top = Object.entries(diseaseCounts).sort((a, b) => b[1] - a[1])[0];
 
   const cards = [
-    { label: 'Total Cases', value: totalCases, icon: Activity, trend: '+12.5%', up: true },
-    { label: 'High Risk Zones', value: highRiskCount, icon: AlertTriangle, trend: '+2 districts', up: true },
-    { label: 'Primary Pathogen', value: mostAffectedDisease, icon: Thermometer, trend: 'Increasing', up: true },
-    { label: 'Monitored Districts', value: activeDistricts, icon: ShieldCheck, trend: 'Stable', up: false },
+    { label: 'Positive Cases', value: loading ? '…' : totalCases, icon: Activity,
+      trend: change == null ? (totalCases ? 'new' : '—') : `${change > 0 ? '+' : ''}${change}% vs previous`, up: change > 0 },
+    { label: 'High Risk Districts', value: loading ? '…' : highRisk, icon: AlertTriangle, trend: `${rising} rising`, up: rising > 0 },
+    { label: 'Leading Disease', value: loading ? '…' : (top ? top[0] : 'None'), icon: Thermometer, trend: top ? `${top[1]} cases` : '—', up: false },
+    { label: 'Districts Reporting', value: loading ? '…' : byDistrict.length, icon: ShieldCheck, trend: 'of 31', up: false },
   ];
 
   return (
@@ -28,9 +25,7 @@ const SummaryCards = ({ data = [] }) => {
         <div key={card.label} className="summary-card">
           <div className="summary-header">
             <card.icon className="summary-icon" size={20} strokeWidth={1.5} />
-            <div className={`trend-badge ${card.up ? 'up' : 'stable'}`}>
-              {card.up ? '↑' : ''} {card.trend}
-            </div>
+            <div className={`trend-badge ${card.up ? 'up' : 'stable'}`}>{card.up ? '↑ ' : ''}{card.trend}</div>
           </div>
           <div className="summary-body">
             <p>{card.label}</p>

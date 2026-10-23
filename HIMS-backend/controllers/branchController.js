@@ -52,7 +52,7 @@ export const getBranches = async (req, res) => {
 // 2. Create District (Sub-Central Hub)
 export const createDistrict = async (req, res) => {
   try {
-    const { name, state = 'Jharkhand', state_id = null } = req.body;
+    const { name, state = null, state_id = null } = req.body;
 
     if (!name) return res.status(400).json({ success: false, message: 'District name is required' });
 
@@ -122,19 +122,31 @@ export const patchBranchBlock = async (req, res) => {
   }
 };
 
+// Facility coordinates for the hospital-network map and equipment geo-fencing.
+// Blank means "not set"; anything else must be a real latitude / longitude.
+const coords = (lat, lng) => {
+  const blank = (v) => v === undefined || v === null || v === '';
+  if (blank(lat) && blank(lng)) return { ok: true, lat: null, lng: null };
+  const a = Number(lat); const o = Number(lng);
+  if (blank(lat) || blank(lng) || !Number.isFinite(a) || !Number.isFinite(o) || Math.abs(a) > 90 || Math.abs(o) > 180) return { ok: false };
+  return { ok: true, lat: a, lng: o };
+};
+
 // 3. Create Center (Lab/Branch)
 export const createCenter = async (req, res) => {
   try {
-    const { district_id, branch_name, category = 'General Lab', hospital_code, address, contact_number, branch_level = 'Center', parent_branch_id = null, hmis_hosp_mapping_code } = req.body;
+    const { district_id, branch_name, category = 'General Lab', hospital_code, address, contact_number, branch_level = 'Center', parent_branch_id = null, hmis_hosp_mapping_code, latitude, longitude } = req.body;
 
     if (!district_id || !branch_name || !hospital_code) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
+    const geo = coords(latitude, longitude);
+    if (!geo.ok) return res.status(400).json({ success: false, message: 'Enter a valid latitude and longitude, or leave both blank.' });
 
     const [result] = await db.query(
-      `INSERT INTO branches (district_id, branch_name, category, branch_level, parent_branch_id, hospital_code, address, contact_number, status)
-       VALUES (?, ?, ?, ?, ?, UPPER(?), ?, ?, 'Active')`,
-      [district_id, branch_name, category, branch_level, parent_branch_id || null, hospital_code, address, contact_number]
+      `INSERT INTO branches (district_id, branch_name, category, branch_level, parent_branch_id, hospital_code, address, contact_number, latitude, longitude, status)
+       VALUES (?, ?, ?, ?, ?, UPPER(?), ?, ?, ?, ?, 'Active')`,
+      [district_id, branch_name, category, branch_level, parent_branch_id || null, hospital_code, address, contact_number, geo.lat, geo.lng]
     );
     const branchId = result.insertId;
 
@@ -156,17 +168,20 @@ export const createCenter = async (req, res) => {
 export const updateCenter = async (req, res) => {
   try {
     const { id } = req.params;
-    const { district_id, branch_name, category, hospital_code, address, contact_number, branch_level, parent_branch_id, hmis_hosp_mapping_code } = req.body;
+    const { district_id, branch_name, category, hospital_code, address, contact_number, branch_level, parent_branch_id, hmis_hosp_mapping_code, latitude, longitude } = req.body;
 
     if (!district_id || !branch_name || !hospital_code) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
+    const geo = coords(latitude, longitude);
+    if (!geo.ok) return res.status(400).json({ success: false, message: 'Enter a valid latitude and longitude, or leave both blank.' });
 
     await db.query(
       `UPDATE branches
-       SET district_id = ?, branch_name = ?, category = ?, branch_level = ?, parent_branch_id = ?, hospital_code = UPPER(?), address = ?, contact_number = ?
+       SET district_id = ?, branch_name = ?, category = ?, branch_level = ?, parent_branch_id = ?, hospital_code = UPPER(?), address = ?, contact_number = ?,
+           latitude = ?, longitude = ?
        WHERE id = ?`,
-      [district_id, branch_name, category, branch_level, parent_branch_id || null, hospital_code, address, contact_number, id]
+      [district_id, branch_name, category, branch_level, parent_branch_id || null, hospital_code, address, contact_number, geo.lat, geo.lng, id]
     );
 
     if (hmis_hosp_mapping_code !== undefined) {

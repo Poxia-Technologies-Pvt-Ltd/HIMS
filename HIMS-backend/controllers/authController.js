@@ -1,14 +1,15 @@
 import bcrypt from 'bcryptjs';
+import { ROLE_PORTALS, portalAccepts } from '../utils/rolePortals.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import db from '../config/db.js';
-import { createCaptcha, verifyCaptcha } from '../utils/captchaStore.js';
+import { createCaptcha, verifyCaptcha, captchaEnabled } from '../utils/captchaStore.js';
 import { issueCsrfToken } from '../utils/csrfStore.js';
 import { getBlockedUntil, recordLoginFailure, recordLoginSuccess } from '../utils/bruteForceGuard.js';
 import { createResetToken, consumeResetToken } from '../utils/passwordResetStore.js';
 import { FRONTEND_URL } from '../config/frontendUrl.js';
 import { sendPasswordResetEmail } from '../services/emailService.js';
-import { seedBranchHmisConfig } from '../services/cdacService.js';
+import { passwordProblem, passwordExpired, PASSWORD_MAX_AGE_DAYS } from '../utils/passwordPolicy.js';
 
 // Every JWT gets its own random `sid` (one per login, not per user) so the
 // CSRF token store — keyed by sid — gives each login/tab an independent
@@ -41,86 +42,84 @@ const authCookieOptions = () => ({
   ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
 });
 
-export const register = async (req, res) => {
-  const { firstName, lastName, email, phone, role, department, staffId, password, role_level = 'Branch', newBranchName, newHospitalCode, newDistrictId } = req.body;
-  let { branch_id = 1 } = req.body;
+// Logins are created from Employee Management (employeeController.createLogin),
+// never self-registered, so there is no register endpoint.
 
+export const getCaptcha = (req, res) => {
+  const { captchaId, svg, disabled } = createCaptcha();
+  res.json({ captchaId, svg, disabled: !!disabled });
+};
+
+// Sets the session cookie and returns what the frontend keeps about the user.
+// `user` is a users row joined with its branch (hospital_code, district_id, branch_name).
+const sendSession = (res, user, extra = {}) => {
+  const { token, csrfToken } = generateToken(user.id, user.role, user.branch_id, user.role_level);
+  res.cookie(AUTH_COOKIE_NAME, token, authCookieOptions());
+  res.json({
+    id: user.id,
+    firstName: user.first_name,
+    lastName: user.last_name,
+    email: user.email,
+    role: user.role,
+    branch_id: user.branch_id,
+    role_level: user.role_level,
+    hospital_code: user.hospital_code,
+    district_id: user.district_id,
+    branch_name: user.branch_name,
+    passwordChangeRequired: !extra.quickAccess && (!!user.password_change_required || passwordExpired(user.password_changed_at)),
+    passwordExpired: passwordExpired(user.password_changed_at),
+    passwordMaxAgeDays: PASSWORD_MAX_AGE_DAYS,
+    csrfToken,
+    ...extra,
+  });
+};
+
+// ── Temporary access (QUICK_ACCESS=true) ─────────────────────────────────────
+// For setting the system up and trying it out: the start page opens a
+// session for a role without an ID or password. Anyone who can reach the
+// site can then act as that role, so it is off unless the backend .env sets
+// QUICK_ACCESS=true, and must stay off on a live hospital deployment.
+export const quickAccessEnabled = () => process.env.QUICK_ACCESS === 'true';
+
+const QUICK_USER_SQL = `
+  SELECT u.*, b.hospital_code, b.district_id, b.branch_name
+    FROM users u LEFT JOIN branches b ON u.branch_id = b.id
+   WHERE u.is_active = 1 AND u.role IN (?)
+   ORDER BY u.id LIMIT 1`;
+
+// GET /api/auth/config — what the sign-in pages should offer.
+export const authConfig = async (req, res) => {
   try {
-    // Check if user exists
-    const [existingUsers] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-    if (existingUsers.length > 0) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
-
-    // Handle new branch creation
-    if (branch_id === 'NEW' && newBranchName && newHospitalCode && newDistrictId) {
-      try {
-        const [branchResult] = await db.query(
-          `INSERT INTO branches (district_id, branch_name, category, hospital_code, status, branch_level) VALUES (?, ?, 'General Hospital', UPPER(?), 'Active', 'Center')`,
-          [newDistrictId, newBranchName, newHospitalCode]
-        );
-        branch_id = branchResult.insertId;
-        // This path previously never created a branch_hmis_config row at all,
-        // silently blocking CDAC pull/push for any branch self-registered
-        // this way (see services/cdacService.js seedBranchHmisConfig).
-        await seedBranchHmisConfig(branch_id, newDistrictId);
-      } catch (branchErr) {
-        if (branchErr.code === 'ER_DUP_ENTRY') {
-          return res.status(400).json({ message: 'Hospital Code already exists' });
-        }
-        throw branchErr;
+    const out = { captcha: captchaEnabled(), quickAccess: quickAccessEnabled(), portals: {} };
+    if (out.quickAccess) {
+      // Which account each role's session would open as, so the start page can say so.
+      for (const [id, p] of Object.entries(ROLE_PORTALS)) {
+        const [[u]] = await db.query(QUICK_USER_SQL, [p.roles]);
+        out.portals[id] = u ? { name: `${u.first_name} ${u.last_name}`.trim(), role: u.role } : null;
       }
     }
-
-      // Hash password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      // Create user query
-      // VAPT #16 (No Compulsory Change Password Functionality): an admin
-      // chose this password, not the new user, so force a change on their
-      // first login rather than letting them (and whoever else saw it get
-      // set up) keep using it indefinitely.
-      const query = `
-        INSERT INTO users (first_name, last_name, email, phone, role, department, staff_id, password, branch_id, role_level, password_change_required)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `;
-      const values = [firstName, lastName, email, phone || null, role, department, staffId || null, hashedPassword, branch_id, role_level];
-
-    const [result] = await db.query(query, values);
-
-    if (result.insertId) {
-      // This endpoint requires an already-authenticated Admin/Lab Head/Doctor
-      // (see authRoutes.js) creating another user's account — it must not
-      // also log the caller in as that new user, so no token/cookie is
-      // issued here. The new user gets their own session on their own login.
-      res.status(201).json({
-        id: result.insertId,
-        firstName,
-        lastName,
-        email,
-        role,
-        branch_id,
-        role_level,
-      });
-    } else {
-      res.status(400).json({ message: 'Invalid user data' });
-    }
+    res.json({ success: true, ...out });
   } catch (error) {
-    console.error(error);
-    
-    // Check if table missing error (ER_NO_SUCH_TABLE)
-    if (error.code === '42P01') {
-      return res.status(500).json({ message: 'Database tables not created yet.' });
-    }
-    
-    res.status(500).json({ message: 'Server error during registration' });
+    console.error('authConfig error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-export const getCaptcha = (req, res) => {
-  const { captchaId, svg } = createCaptcha();
-  res.json({ captchaId, svg });
+// POST /api/auth/quick-session { portal } — opens a session as that role's account.
+export const quickSession = async (req, res) => {
+  if (!quickAccessEnabled()) return res.status(404).json({ success: false, message: 'Not found' });
+  try {
+    const portal = ROLE_PORTALS[req.body?.portal];
+    if (!portal) return res.status(400).json({ success: false, message: 'Choose a role' });
+    const [[user]] = await db.query(QUICK_USER_SQL, [portal.roles]);
+    if (!user) return res.status(404).json({ success: false, message: `There is no active ${portal.label} account yet. Create one in Employee Management.` });
+    await db.query('UPDATE users SET last_login_at = NOW() WHERE id = ?', [user.id]);
+    console.warn(`[quick-access] ${portal.label} session opened as ${user.email} from ${req.ip}`);
+    sendSession(res, user, { quickAccess: true });
+  } catch (error) {
+    console.error('quickSession error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 };
 
 export const login = async (req, res) => {
@@ -185,6 +184,12 @@ export const login = async (req, res) => {
 
     const user = users[0];
 
+    // Deactivated accounts (User Management, tender #107) cannot sign in.
+    if (user.is_active === 0) {
+      recordLoginFailure(clientIp);
+      return res.status(403).json({ message: 'This account has been deactivated. Please contact your administrator.', captcha: createCaptcha() });
+    }
+
     // VAPT #6 (No Account Lock-Out): per-account lockout, layered on top of
     // the IP-based block above — an attacker who rotates source IPs against
     // one specific account is still stopped.
@@ -210,27 +215,21 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials or password', captcha: createCaptcha() });
     }
 
+    // The start page sends which role's sign-in screen was used. Checked only
+    // after the password, so it never reveals which accounts exist.
+    if (req.body.portal && !portalAccepts(req.body.portal, user.role)) {
+      return res.status(403).json({
+        message: `This is not a ${ROLE_PORTALS[req.body.portal]?.label || 'valid'} account. Go back and choose your own role.`,
+        captcha: createCaptcha(),
+      });
+    }
+
     recordLoginSuccess(clientIp);
     await db.query(
-      'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?',
+      'UPDATE users SET failed_login_attempts = 0, locked_until = NULL, last_login_at = NOW() WHERE id = ?',
       [user.id]
     );
-    const { token, csrfToken } = generateToken(user.id, user.role, user.branch_id, user.role_level);
-    res.cookie(AUTH_COOKIE_NAME, token, authCookieOptions());
-    res.json({
-      id: user.id,
-      firstName: user.first_name,
-      lastName: user.last_name,
-      email: user.email,
-      role: user.role,
-      branch_id: user.branch_id,
-      role_level: user.role_level,
-      hospital_code: user.hospital_code,
-      district_id: user.district_id,
-      branch_name: user.branch_name,
-      passwordChangeRequired: !!user.password_change_required,
-      csrfToken,
-    });
+    sendSession(res, user);
   } catch (error) {
     console.error(error);
 
@@ -251,8 +250,12 @@ export const login = async (req, res) => {
 export const changePassword = async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
-  if (!currentPassword || !newPassword || newPassword.length < 8) {
-    return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+  if (!currentPassword) {
+    return res.status(400).json({ message: 'Enter your current password.' });
+  }
+  const problem = passwordProblem(newPassword);
+  if (problem) {
+    return res.status(400).json({ message: problem });
   }
 
   try {
@@ -265,12 +268,15 @@ export const changePassword = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ message: 'Current password is incorrect' });
     }
+    if (await bcrypt.compare(newPassword, users[0].password)) {
+      return res.status(400).json({ message: 'The new password must be different from the current one.' });
+    }
 
     const salt = await bcrypt.genSalt(10);
     const hashed = await bcrypt.hash(newPassword, salt);
 
     await db.query(
-      'UPDATE users SET password = ?, password_change_required = 0 WHERE id = ?',
+      'UPDATE users SET password = ?, password_change_required = 0, password_changed_at = NOW() WHERE id = ?',
       [hashed, req.user.id]
     );
 
@@ -330,8 +336,9 @@ export const forgotPassword = async (req, res) => {
 export const resetPasswordWithToken = async (req, res) => {
   const { token, newPassword } = req.body;
 
-  if (!newPassword || newPassword.length < 8) {
-    return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+  const problem = passwordProblem(newPassword);
+  if (problem) {
+    return res.status(400).json({ message: problem });
   }
 
   const userId = consumeResetToken(token);
@@ -342,7 +349,7 @@ export const resetPasswordWithToken = async (req, res) => {
   try {
     const hashed = await bcrypt.hash(newPassword, 10);
     await db.query(
-      'UPDATE users SET password = ?, password_change_required = 0, failed_login_attempts = 0, locked_until = NULL WHERE id = ?',
+      'UPDATE users SET password = ?, password_change_required = 0, password_changed_at = NOW(), failed_login_attempts = 0, locked_until = NULL WHERE id = ?',
       [hashed, userId]
     );
     res.json({ success: true, message: 'Password reset successfully. You can now log in.' });

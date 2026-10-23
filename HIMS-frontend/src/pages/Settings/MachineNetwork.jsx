@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import { Download, RefreshCw, LifeBuoy, X } from 'lucide-react';
 import {
@@ -129,10 +129,18 @@ export default function MachineNetwork() {
   // support ticket state
   const [showSupport, setShowSupport] = useState(false);
   const [selectedMachine, setSelectedMachine] = useState(null);
-  const [supportForm, setSupportForm] = useState({ issueType:'Machine Fault', description:'' });
-  const [tickets, setTickets] = useState([
-    { id:'TKT-1001', machineId:'M-103', machineName:'Merilyzer CelQuant 5 Plus', branch:'Central Hospital', category:'Maintenance Required', status:'Pending', date:'2026-04-29', description:'Monthly preventive calibration required.' }
-  ]);
+  const [supportForm, setSupportForm] = useState({ issueType:'Breakdown', description:'' });
+  // Tickets live in equipment_tickets (Equipment page); this tab shows and raises the same ones.
+  const [tickets, setTickets] = useState([]);
+  const [registryIds, setRegistryIds] = useState({}); // machine_id string -> lab_machines.id
+  const loadTickets = useCallback(() => Promise.all([
+    fetch(`${API_BASE}/api/equipment/tickets`, { headers: authHdr() }).then(x => x.json()),
+    fetch(`${API_BASE}/api/equipment/registry`, { headers: authHdr() }).then(x => x.json()),
+  ]).then(([t, r]) => {
+    if (t.success) setTickets(t.tickets);
+    if (r.success) setRegistryIds(Object.fromEntries(r.machines.map(m => [m.machine_id, m.id])));
+  }).catch(() => { /* tab shows empty */ }), []);
+  useEffect(() => { loadTickets(); }, [loadTickets]);
 
   const timerRef = useRef(null);
 
@@ -216,24 +224,22 @@ export default function MachineNetwork() {
     ]));
     const blob = new Blob([rows.map(r=>r.join(',')).join('\n')], {type:'text/csv'});
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
-    a.download=`jharkhand_analyzers_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+    a.download=`karnataka_analyzers_${new Date().toISOString().split('T')[0]}.csv`; a.click();
   };
 
-  const handleSupportSubmit = (e) => {
+  const handleSupportSubmit = async (e) => {
     e.preventDefault();
     if (!supportForm.description.trim()) { showAlert('error','Please provide a description.'); return; }
-    setTickets([{
-      id:`TKT-${Math.floor(1000+Math.random()*9000)}`,
-      machineId: selectedMachine.machine_id,
-      machineName: selectedMachine.model||selectedMachine.machine_id,
-      branch: selectedMachine.lab_name,
-      category: supportForm.issueType,
-      status:'Open',
-      date: new Date().toISOString().split('T')[0],
-      description: supportForm.description,
-    }, ...tickets]);
+    const id = registryIds[selectedMachine.machine_id];
+    if (!id) { showAlert('error','This analyzer is not in the equipment registry yet.'); return; }
+    const res = await fetch(`${API_BASE}/api/equipment/tickets`, {
+      method: 'POST', headers: { ...authHdr(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ machine_id: id, category: supportForm.issueType, priority: supportForm.issueType === 'Breakdown' ? 'High' : 'Medium', description: supportForm.description }),
+    }).then(x => x.json()).catch(() => ({ success: false, message: 'Could not reach the server.' }));
+    if (!res.success) { showAlert('error', res.message); return; }
     setShowSupport(false);
-    showAlert('success',`Support ticket raised for ${selectedMachine.machine_id}`);
+    showAlert('success', res.message);
+    loadTickets();
   };
 
   const tabStyle = (id) => ({
@@ -246,7 +252,7 @@ export default function MachineNetwork() {
   if (loading) return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',flexDirection:'column',gap:12}}>
       <div style={{width:40,height:40,borderRadius:'50%',border:'4px solid #e2e8f0',borderTopColor:'#3b82f6',animation:'spin .8s linear infinite'}}/>
-      <div style={{color:'#94a3b8',fontWeight:600}}>Loading Jharkhand network…</div>
+      <div style={{color:'#94a3b8',fontWeight:600}}>Loading Karnataka network…</div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -258,7 +264,7 @@ export default function MachineNetwork() {
       {/* Header */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:24}}>
         <div>
-          <h1 style={{fontSize:26,fontWeight:900,color:'#0f172a',margin:0}}>Machine Network — Jharkhand</h1>
+          <h1 style={{fontSize:26,fontWeight:900,color:'#0f172a',margin:0}}>Machine Network — Karnataka</h1>
           <p style={{color:'#64748b',margin:'4px 0 0',fontSize:14}}>
             Central view of all lab analyzers across every facility &nbsp;·&nbsp;
             <span style={{color:'#94a3b8'}}>auto-refreshes every 30s</span>
@@ -451,7 +457,7 @@ export default function MachineNetwork() {
         {/* Hospital / Lab-wise */}
         <div style={{background:'#fff',borderRadius:14,border:'1px solid #e2e8f0',overflow:'hidden'}}>
           <div style={{padding:'14px 20px',borderBottom:'1px solid #f1f5f9',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <h3 style={{margin:0,fontSize:14,fontWeight:800}}>Hospital / Lab-wise Machine Status — Jharkhand</h3>
+            <h3 style={{margin:0,fontSize:14,fontWeight:800}}>Hospital / Lab-wise Machine Status — Karnataka</h3>
             <span style={{fontSize:12,color:'#94a3b8'}}>{(stats?.labs||[]).length} facilities</span>
           </div>
           <table style={{width:'100%',borderCollapse:'collapse'}}>
@@ -552,7 +558,7 @@ export default function MachineNetwork() {
                       <td style={{padding:'11px 14px',fontWeight:900,fontSize:15,color:m.tests_today>0?'#7c3aed':'#94a3b8'}}>{m.tests_today||0}</td>
                       <td style={{padding:'11px 14px'}}><Sparkline events={sparklines[m.machine_id]}/></td>
                       <td style={{padding:'11px 14px'}}>
-                        <button onClick={() => { setSelectedMachine(m); setSupportForm({issueType:'Machine Fault',description:''}); setShowSupport(true); }}
+                        <button onClick={() => { setSelectedMachine(m); setSupportForm({issueType:'Breakdown',description:''}); setShowSupport(true); }}
                           style={{display:'flex',alignItems:'center',gap:5,background:'#eff6ff',color:'#1d4ed8',border:'none',padding:'6px 10px',borderRadius:6,fontSize:11,fontWeight:700,cursor:'pointer'}}>
                           <LifeBuoy size={12}/> Support
                         </button>
@@ -642,7 +648,7 @@ export default function MachineNetwork() {
         <div style={{background:'#fff',borderRadius:14,border:'1px solid #e2e8f0',overflow:'hidden'}}>
           <div style={{padding:'14px 20px',borderBottom:'1px solid #f1f5f9',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <h3 style={{margin:0,fontSize:14,fontWeight:800}}>Support Tickets</h3>
-            <span style={{fontSize:12,color:'#94a3b8'}}>{tickets.length} tickets</span>
+            <a href="/equipment" style={{fontSize:12,fontWeight:700,color:'#1d4ed8'}}>{tickets.length} tickets · manage on the Equipment page →</a>
           </div>
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead><tr style={{background:'#f8fafc'}}>
@@ -651,17 +657,18 @@ export default function MachineNetwork() {
               ))}
             </tr></thead>
             <tbody>
+              {tickets.length === 0 && <tr><td colSpan={6} style={{padding:24,textAlign:'center',color:'#94a3b8'}}>No tickets raised.</td></tr>}
               {tickets.map(tk=>(
                 <tr key={tk.id} style={{borderBottom:'1px solid #f8fafc'}}>
-                  <td style={{padding:'12px 20px',fontWeight:700,color:'#1e40af'}}>{tk.id}</td>
-                  <td style={{padding:'12px 20px',fontSize:12,color:'#475569'}}>{tk.date}</td>
-                  <td style={{padding:'12px 20px',fontSize:13,fontWeight:600}}>{tk.machineId} — {tk.machineName}</td>
-                  <td style={{padding:'12px 20px',fontSize:12,color:'#475569'}}>{tk.branch}</td>
+                  <td style={{padding:'12px 20px',fontWeight:700,color:'#1e40af'}}>{tk.ticket_no}</td>
+                  <td style={{padding:'12px 20px',fontSize:12,color:'#475569'}}>{new Date(tk.reported_at).toLocaleDateString('en-IN')}</td>
+                  <td style={{padding:'12px 20px',fontSize:13,fontWeight:600}}>{tk.machine_name} — {tk.manufacturer} {tk.model}</td>
+                  <td style={{padding:'12px 20px',fontSize:12,color:'#475569'}}>{tk.branch_name}</td>
                   <td style={{padding:'12px 20px',fontSize:12}}>{tk.category}</td>
                   <td style={{padding:'12px 20px'}}>
                     <span style={{padding:'4px 8px',borderRadius:6,fontSize:11,fontWeight:800,
-                      background:tk.status==='Open'?'#fee2e2':'#fef3c7',
-                      color:tk.status==='Open'?'#991b1b':'#92400e'}}>
+                      background:tk.status==='Open'?'#fee2e2':tk.status==='In Progress'?'#fef3c7':'#d1fae5',
+                      color:tk.status==='Open'?'#991b1b':tk.status==='In Progress'?'#92400e':'#065f46'}}>
                       {tk.status}
                     </span>
                   </td>
@@ -692,11 +699,7 @@ export default function MachineNetwork() {
                   <label style={{display:'block',fontSize:13,fontWeight:600,marginBottom:8}}>Support Category *</label>
                   <select style={{width:'100%',padding:'10px',borderRadius:6,border:'1px solid var(--border-light)'}}
                     value={supportForm.issueType} onChange={e=>setSupportForm(p=>({...p,issueType:e.target.value}))}>
-                    <option>Machine Fault / Hardware Error</option>
-                    <option>Preventive Maintenance Required</option>
-                    <option>Software / Integration Help</option>
-                    <option>Reagents / Consumables Query</option>
-                    <option>Other</option>
+                    {['Breakdown','Error / malfunction','Calibration failure','QC failure','Preventive maintenance required','Connectivity / interface','Other'].map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
                 <div style={{marginBottom:16}}>

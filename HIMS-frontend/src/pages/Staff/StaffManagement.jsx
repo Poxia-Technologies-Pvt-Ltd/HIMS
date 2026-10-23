@@ -24,7 +24,7 @@ const hdr = () => ({ Authorization: `Bearer ${tok()}`, 'Content-Type': 'applicat
 // VAPT #23 (Clipboard Data Stealing Attack): matches Login.jsx/ChangePassword.jsx.
 const blockClipboard = (e) => e.preventDefault();
 
-const ROLES = ['Doctor', 'Receptionist', 'HR', 'Admin', 'Lab Head', 'Lab Doctor', 'Lab Technician'];
+const ROLES = ['Doctor', 'Receptionist', 'HR', 'Admin', 'Lab Head', 'Lab Doctor', 'Lab Technician', 'Sample Collector', 'Auditor', 'Programme Officer'];
 const ROLE_LEVELS = ['Branch', 'Sub-Central', 'Central'];
 
 const emptyForm = (user) => ({
@@ -44,7 +44,7 @@ function StaffManagement() {
   const isBranch   = !isCentral;
   // Lab Head can only manage Lab Technician staff
   const isLabHead  = (user.role || '').toLowerCase() === 'lab head';
-  const assignableRoles = isLabHead ? ['Lab Technician'] : ROLES;
+  const assignableRoles = isLabHead ? ['Lab Technician', 'Sample Collector'] : ROLES;
 
   const [showPassword, setShowPassword] = useState(false);
   const [stats, setStats]           = useState({});
@@ -145,7 +145,7 @@ function StaffManagement() {
   const set = (field, value) => setFormData(p => ({ ...p, [field]: value }));
 
   const filteredStaff = staff.filter(s => {
-    if (isLabHead && s.role !== 'Lab Technician') return false;
+    if (isLabHead && !['Lab Technician', 'Sample Collector'].includes(s.role)) return false;
     const q = search.toLowerCase();
     return (
       `${s.first_name} ${s.last_name}`.toLowerCase().includes(q) ||

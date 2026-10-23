@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Search, Pencil, X, Save, FileX } from 'lucide-react';
 import { API_BASE } from '../apiBase';
+import { useManualReasons, ReasonPicker, reasonComplete } from '../components/ManualReason';
 
 const EditResults = () => {
   const [tests, setTests] = useState([]);
@@ -9,6 +10,9 @@ const EditResults = () => {
   const [search, setSearch] = useState('');
   const [selectedTest, setSelectedTest] = useState(null);
   const [editedResults, setEditedResults] = useState([]);
+  const [editReason, setEditReason] = useState('');
+  const [reasonCode, setReasonCode] = useState('');
+  const manualReasons = useManualReasons();
 
   useEffect(() => {
     fetchTests();
@@ -30,6 +34,8 @@ const EditResults = () => {
 
   const handleEditClick = (test) => {
     setSelectedTest(test);
+    setEditReason('');
+    setReasonCode('');
     // clone the results array so we can edit it safely
     setEditedResults(JSON.parse(JSON.stringify(test.results)));
   };
@@ -42,6 +48,7 @@ const EditResults = () => {
 
   const handleSaveEdits = async () => {
     if (!selectedTest) return;
+    if (!reasonComplete(manualReasons, reasonCode, editReason)) { alert('Choose a reason for changing these results.'); return; }
     try {
       // Fetch the bill_item_id using sample_id if needed, but our save API might need bill_item_id or just sample_id.
       // The save API works with just sample_id if it can look up bill_item_id.
@@ -50,14 +57,24 @@ const EditResults = () => {
         sample_id: selectedTest.sample_id,
         machine_no: selectedTest.machine_no,
         test_name: selectedTest.test_name,
-        results: editedResults
+        results: editedResults,
+        // Every manual change is logged with who, when, before/after and this reason.
+        entry_mode: 'edited',
+        manual_reason_code: reasonCode,
+        manual_reason: editReason.trim(),
+        edit_reason: `${manualReasons.find((r) => r.code === reasonCode)?.label || ''}${editReason.trim() ? `: ${editReason.trim()}` : ''}`,
+        amend_reason: `${manualReasons.find((r) => r.code === reasonCode)?.label || ''}${editReason.trim() ? `: ${editReason.trim()}` : ''}`,
       };
 
-      const res = await axios.post(`${API_BASE}/api/lab/save-test-results`, payload);
+      const res = await axios.post(`${API_BASE}/api/lab/save-test-results`, payload, { validateStatus: () => true });
       if (res.data.success) {
-        alert("Results updated successfully!");
+        alert(selectedTest.status === 'Verified'
+          ? 'Results updated. Because this result was already validated, it now needs validation again.'
+          : 'Results updated successfully!');
         setSelectedTest(null);
         fetchTests();
+      } else {
+        alert(res.data.message || 'Failed to save edits.');
       }
     } catch (err) {
       console.error("Error saving edited results:", err);
@@ -146,7 +163,15 @@ const EditResults = () => {
                 <div key={i} className="flex-between" style={{ padding: 14, background: 'var(--surface-sunken)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
                     {res.parameter_name || res.test_name}
-                    {res.flag && res.flag !== 'N' && <span style={{ marginLeft: 8, color: res.flag === 'H' ? '#ef4444' : '#3b82f6' }}>({res.flag})</span>}
+                    {res.flag && res.flag !== 'N' && (
+                      <span
+                        title={(res.flag_reasons || []).map((x) => x.message).join('\n') || undefined}
+                        style={{ marginLeft: 8, fontWeight: 800, color: ({ H: '#ef4444', HH: '#991b1b', L: '#3b82f6', LL: '#1e3a8a', I: '#64748b' })[res.flag] || '#3b82f6' }}
+                      >
+                        ({res.flag === 'HH' ? 'Critical high' : res.flag === 'LL' ? 'Critical low' : res.flag === 'I' ? 'Invalid' : res.flag})
+                      </span>
+                    )}
+                    {res.delta && <span title={`Previous ${res.delta.previous_value}`} style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, color: '#6d28d9' }}>Δ {res.delta.change_percent != null ? `${res.delta.change_percent}%` : ''}</span>}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <input
@@ -165,8 +190,12 @@ const EditResults = () => {
               )}
             </div>
 
+            <div style={{ marginTop: 16 }}>
+              <ReasonPicker reasons={manualReasons} code={reasonCode} note={editReason} onCode={setReasonCode} onNote={setEditReason} />
+            </div>
+
             <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--border-subtle)', display: 'flex', gap: 12 }}>
-              <button onClick={handleSaveEdits} className="btn btn-primary" style={{ flex: 1, padding: 15, background: 'var(--color-success)' }}>
+              <button onClick={handleSaveEdits} disabled={!reasonComplete(manualReasons, reasonCode, editReason)} className="btn btn-primary" style={{ flex: 1, padding: 15, background: 'var(--color-success)' }}>
                 <Save size={16} /> Save Changes
               </button>
               <button onClick={() => setSelectedTest(null)} className="btn btn-secondary" style={{ padding: '15px 22px' }}>

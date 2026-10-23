@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import '../../assets/CSS/Login.css';
 import { useCaptcha } from '../../hooks/useCaptcha';
+import OtpSignIn from '../../components/OtpSignIn';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -14,7 +15,9 @@ function PatientLogin() {
   const [error, setError] = useState('');
   const [blocked, setBlocked] = useState(false);
   const [focused, setFocused] = useState('');
-  const { svg: captchaSvg, captchaId, refresh: refreshCaptcha, applyCaptcha } = useCaptcha();
+  const [mode, setMode] = useState('dob'); // 'dob' or 'otp'
+  const [choices, setChoices] = useState(null); // several patients share the verified mobile number
+  const { svg: captchaSvg, captchaId, refresh: refreshCaptcha, applyCaptcha, captchaEnabled } = useCaptcha();
 
   const handleChange = (e) => {
     setError('');
@@ -27,7 +30,7 @@ function PatientLogin() {
       setError('Please enter both phone number and date of birth.');
       return;
     }
-    if (!captchaText) {
+    if (captchaEnabled && !captchaText) {
       setError('Please enter the captcha text.');
       return;
     }
@@ -51,6 +54,7 @@ function PatientLogin() {
         const err = new Error(data.message || 'Login failed');
         err.status = response.status;
         err.captcha = data.captcha;
+        err.otpRequired = !!data.otp_required;
         throw err;
       }
 
@@ -61,7 +65,7 @@ function PatientLogin() {
       navigate('/patient-portal/profile');
     } catch (err) {
       setError(err.message);
-      if (err.status === 429) {
+      if (err.otpRequired) { setMode('otp'); setError(''); } else if (err.status === 429) {
         // IP is locked out for 24h — nothing left to retry, no captcha comes
         // back with this response, so just lock the form.
         setBlocked(true);
@@ -72,6 +76,17 @@ function PatientLogin() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const finishOtp = (data) => {
+    if (data.patients?.length > 1) { setChoices(data.patients); return; }
+    choose({ ...data.patient, token: data.token });
+  };
+  const choose = (p) => {
+    const { token, ...patient } = p;
+    localStorage.setItem('patient_token', token);
+    localStorage.setItem('patient_data', JSON.stringify(patient));
+    navigate('/patient-portal/profile');
   };
 
   return (
@@ -104,6 +119,21 @@ function PatientLogin() {
             </div>
           )}
 
+          {mode === 'otp' && !choices && (
+            <OtpSignIn requestUrl="/api/patients/portal/otp/request" verifyUrl="/api/patients/portal/otp/verify" onSuccess={finishOtp}
+              hint="We will send a 6-digit code to this number by SMS or WhatsApp." />
+          )}
+          {choices && (
+            <div>
+              <p style={{ marginBottom: 12 }}>More than one person is registered with this number. Who are you?</p>
+              {choices.map((p) => (
+                <button key={p.id} type="button" className="btn-primary" style={{ marginBottom: 8 }} onClick={() => choose(p)}>
+                  {[p.first_name, p.last_name].filter(Boolean).join(' ')} · {p.reg_no}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === 'dob' && (
           <form className="auth-form" onSubmit={handleSubmit} noValidate>
             <div className={`field-group ${focused === 'phone' ? 'is-focused' : ''} ${formData.phone ? 'has-value' : ''}`}>
               <label htmlFor="patient-phone" className="field-label">Phone Number</label>
@@ -148,6 +178,7 @@ function PatientLogin() {
               </div>
             </div>
 
+            {captchaEnabled && (
             <div className="form-group">
               <label className="field-label">Captcha</label>
               <div className="captcha-row">
@@ -179,6 +210,7 @@ function PatientLogin() {
                 required
               />
             </div>
+            )}
 
             <button type="submit" className="btn-primary" disabled={loading || blocked}>
               {loading ? (
@@ -197,6 +229,15 @@ function PatientLogin() {
               )}
             </button>
           </form>
+          )}
+
+          {!choices && (
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
+              <button type="button" className="captcha-refresh" style={{ width: 'auto', padding: '6px 10px' }} onClick={() => { setError(''); setMode(mode === 'dob' ? 'otp' : 'dob'); }}>
+                {mode === 'dob' ? 'Sign in with a one-time code instead' : 'Sign in with date of birth instead'}
+              </button>
+            </div>
+          )}
 
           <div className="auth-footer" style={{ marginTop: '24px', textAlign: 'center' }}>
             <Link to="/" style={{ color: 'var(--text-muted)', fontSize: '14px' }}>

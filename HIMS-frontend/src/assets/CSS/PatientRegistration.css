@@ -1644,3 +1644,15 @@
   .bil-action-btn { padding: 0 14px; font-size: 12.5px; }
   .bil-action-divider { display: none; }
 }
+
+/* ── Queue token shown after billing (receptionist tells the patient) ── */
+.bil-token-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 118px; margin: 0 16px 0 auto; padding: 8px 18px;
+  background: linear-gradient(135deg, #1d4ed8 0%, #0891b2 100%);
+  border-radius: 12px; color: #fff; line-height: 1.1; text-align: center;
+  box-shadow: 0 6px 16px -6px rgba(29,78,216,0.6);
+}
+.bil-token-label { font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.85; }
+.bil-token-num   { font-size: 34px; font-weight: 800; letter-spacing: 0.02em; margin: 2px 0; }
+.bil-token-sub   { font-size: 11px; font-weight: 500; opacity: 0.9; }

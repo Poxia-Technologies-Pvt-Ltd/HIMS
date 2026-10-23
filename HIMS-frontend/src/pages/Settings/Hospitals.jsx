@@ -17,6 +17,7 @@ import {
   Loader2
 } from 'lucide-react';
 import '../../assets/CSS/Hospitals.css';
+import { KARNATAKA_CENTER, BENGALURU, loadKarnatakaDistricts } from '../../utils/karnatakaDistricts';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -52,9 +53,8 @@ const EMPTY_CENTER = {
   latitude: '', longitude: ''
 };
 
-// ─── Ranchi District Bounds ───────────────────────────────────────────────────
-const RANCHI_CENTER = [23.3441, 85.3096];
-const RANCHI_ZOOM = 11;
+// ─── Karnataka map defaults ───────────────────────────────────────────────────
+const STATE_ZOOM = 7;
 
 // ─── Graph Layout: Radial Tree ────────────────────────────────────────────────
 function computeLayout(tree, width, height) {
@@ -261,7 +261,7 @@ function NetworkGraph({ branches, selectedId, onSelect }) {
 
 // ─── GEOCODE helper (shared) ──────────────────────────────────────────────────
 async function geocodeOne(address) {
-  const query = encodeURIComponent(`${address}, Ranchi, Jharkhand, India`);
+  const query = encodeURIComponent(`${address}, Karnataka, India`);
   const res = await fetch(
     `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=in`,
     { headers: { 'Accept-Language': 'en', 'User-Agent': 'HospitalNetworkApp/1.0' } }
@@ -300,27 +300,20 @@ function MapView({ branches, selectedId, onSelect, onCoordsUpdate }) {
   useEffect(() => {
     if (!leafletReady || !mapRef.current || leafletRef.current) return;
     const L = window.L;
-    const map = L.map(mapRef.current, { center: RANCHI_CENTER, zoom: RANCHI_ZOOM, zoomControl: false });
+    const map = L.map(mapRef.current, { center: KARNATAKA_CENTER, zoom: STATE_ZOOM, zoomControl: false });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 18,
     }).addTo(map);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-    const ranchiBoundary = [
-      [23.5800, 85.0500], [23.6200, 85.1500], [23.6500, 85.2500], [23.6300, 85.3800],
-      [23.6000, 85.4800], [23.5500, 85.5500], [23.5000, 85.6000], [23.4200, 85.6200],
-      [23.3500, 85.6000], [23.2800, 85.5500], [23.2200, 85.4800], [23.1800, 85.4000],
-      [23.1500, 85.3000], [23.1600, 85.2000], [23.1900, 85.1200], [23.2500, 85.0600],
-      [23.3200, 85.0200], [23.4000, 85.0100], [23.4800, 85.0200], [23.5800, 85.0500],
-    ];
-    L.polygon(ranchiBoundary, { color: '#1a56db', weight: 2, fillColor: '#dbeafe', fillOpacity: 0.12, dashArray: '6 4' }).addTo(map);
-    L.marker([23.3441, 85.3096], {
-      icon: L.divIcon({
-        className: '',
-        html: `<div style="background:rgba(13,37,84,0.85);color:white;font-size:11px;font-weight:700;font-family:Syne,sans-serif;padding:3px 9px;border-radius:20px;white-space:nowrap;letter-spacing:1px;text-transform:uppercase;pointer-events:none;">Ranchi District</div>`,
-        iconAnchor: [50, 10],
-      })
-    }).addTo(map);
+    // Karnataka district boundaries, from the copy bundled with the app.
+    loadKarnatakaDistricts().then((geo) => {
+      if (leafletRef.current !== map) return;
+      L.geoJSON(geo, {
+        style: { color: '#1a56db', weight: 1, fillColor: '#dbeafe', fillOpacity: 0.08, dashArray: '4 3' },
+        onEachFeature: (feature, layer) => layer.bindTooltip(feature.properties.name, { sticky: true }),
+      }).addTo(map);
+    }).catch(() => {});
     leafletRef.current = map;
     return () => { map.remove(); leafletRef.current = null; };
   }, [leafletReady]);
@@ -719,7 +712,7 @@ export default function Hospitals() {
     setGeoResults([]);
     setGeoError('');
     try {
-      const query = encodeURIComponent(`${addr}, Ranchi, Jharkhand, India`);
+      const query = encodeURIComponent(`${addr}, Karnataka, India`);
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=5&countrycodes=in`,
         { headers: { 'Accept-Language': 'en', 'User-Agent': 'HospitalNetworkApp/1.0' } }
@@ -763,8 +756,8 @@ export default function Hospitals() {
     if (!window.L) return;
 
     const L = window.L;
-    const lat = parseFloat(centerData.latitude) || RANCHI_CENTER[0];
-    const lng = parseFloat(centerData.longitude) || RANCHI_CENTER[1];
+    const lat = parseFloat(centerData.latitude) || BENGALURU[0];
+    const lng = parseFloat(centerData.longitude) || BENGALURU[1];
 
     const map = L.map(miniMapRef.current, {
       center: [lat, lng],

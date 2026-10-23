@@ -1,0 +1,51 @@
+{
+  "name": "karnataka-lims-tv-kiosk",
+  "productName": "Karnataka LIMS TV Kiosk",
+  "version": "1.0.0",
+  "description": "Lobby display for Karnataka LIMS — shows the live lab queue and token board on a waiting-room TV.",
+  "main": "main/main.js",
+  "author": "Poxia Technologies",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.poxiatechnologies.karnatakalims.tvkiosk",
+    "productName": "Karnataka LIMS TV Kiosk",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Karnataka LIMS TV Kiosk"
+    },
+    "files": [
+      "main/**/*",
+      "build/icon.ico",
+      "package.json",
+      "!**/*.map"
+    ],
+    "artifactName": "Karnataka-LIMS-TV-Kiosk-Setup-${version}.${ext}"
+  }
+}

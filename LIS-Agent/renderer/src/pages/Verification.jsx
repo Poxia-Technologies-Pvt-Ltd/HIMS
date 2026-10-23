@@ -86,7 +86,10 @@ const Verification = () => {
                     <div style={{ fontWeight: 700 }}>{test.sample_id}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{test.patient_name}</div>
                   </td>
-                  <td style={{ fontWeight: 500 }}>{test.test_name}</td>
+                  <td style={{ fontWeight: 500 }}>
+                    {test.test_name}
+                    {test.entry_mode && <div title={test.manual_reason || ''} style={{ marginTop: 3 }}><span className="badge badge-warning">{test.entry_mode === 'edited' ? 'Changed by hand' : 'Typed by hand'}</span><div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>{test.manual_reason}</div></div>}
+                  </td>
                   <td><span className="badge badge-warning">{test.status}</span></td>
                   <td>
                     <button onClick={() => setSelectedTest(test)} className="btn btn-primary btn-sm">Review</button>

@@ -6,6 +6,8 @@ import puppeteer from 'puppeteer-core';
 import { Readable } from 'stream';
 import { PDFDocument } from 'pdf-lib';
 import db from '../config/db.js';
+import { signPdfIfConfigured, dscConfigured } from './dscSigner.js';
+import { storedSignedPdf } from './doctorDsc.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -183,9 +185,13 @@ function buildTestTable(test, nameMap) {
     if (p.is_subheader) {
       return `<tr class="section-label"><td colspan="4">${escapeHtml(p.parameter_name)}</td></tr>`;
     }
-    const flag = resolveFlag(p.result_flag, p.result_value, p.reference_range);
+    const rawFlag = String(p.result_flag || p.flag || '').toLowerCase();
+    const critical = rawFlag.startsWith('critical') || rawFlag === 'hh' || rawFlag === 'll';
+    const flag = rawFlag === 'invalid' || rawFlag === 'i' ? 'INVALID'
+      : critical ? (rawFlag.includes('low') || rawFlag === 'll' ? 'LOW' : 'HIGH')
+      : resolveFlag(rawFlag === 'h' ? 'high' : rawFlag === 'l' ? 'low' : rawFlag, p.result_value, p.reference_range);
     const flagClass = flag === 'LOW' ? 'flag-low' : flag === 'HIGH' ? 'flag-high' : '';
-    const flagSuffix = flag === 'LOW' ? ' L' : flag === 'HIGH' ? ' H' : '';
+    const flagSuffix = flag === 'INVALID' ? ' (invalid)' : critical ? (flag === 'LOW' ? ' LL' : ' HH') : flag === 'LOW' ? ' L' : flag === 'HIGH' ? ' H' : '';
     return `<tr>
       <td>${escapeHtml(displayParameterName(p.parameter_name, nameMap))}</td>
       <td class="${flagClass}">${escapeHtml(p.result_value)}${flagSuffix}</td>
@@ -314,6 +320,13 @@ function buildReportHtml(report, qrDataUri, nameMap) {
     margin-top: 20px;
     font-size: 13px;
   }
+  .corrected { margin: 10px 0; padding: 8px 12px; border: 1.5px solid #b45309; background: #fffbeb; color: #78350f; font-size: 12px; page-break-inside: avoid; }
+  .esign { display: flex; justify-content: space-between; gap: 24px; margin-top: 20px; padding-top: 10px; border-top: 1px solid #999; page-break-inside: avoid; }
+  .esign-img { height: 52px; max-width: 200px; object-fit: contain; display: block; margin-bottom: 2px; }
+  .esign-name { font-weight: bold; font-size: 13px; }
+  .esign-line { font-size: 11.5px; color: #333; line-height: 1.5; }
+  .esign-title { font-weight: bold; font-size: 12px; color: #14532d; margin-bottom: 3px; }
+  .esign-right { text-align: right; max-width: 300px; }
   .note { margin-top: 14px; font-size: 12px; }
   .note h3 { font-size: 13px; margin-bottom: 4px; }
   .note ul { margin: 0; padding-left: 18px; }
@@ -347,12 +360,29 @@ function buildReportHtml(report, qrDataUri, nameMap) {
   ${testsHtml}
 
   <div class="tail">
+    ${report.amendment ? `<div class="corrected"><b>CORRECTED REPORT — Version ${escapeHtml(report.amendment.version)}.</b> This report replaces the one issued earlier.${report.amendment.reason ? ` Reason: ${escapeHtml(report.amendment.reason)}` : ''}</div>` : ''}
     <div class="end-report">--End of Report--</div>
 
+    ${report.authentication ? `
+    <div class="esign">
+      <div class="esign-left">
+        ${/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(report.authentication.signature_image || '') ? `<img class="esign-img" src="${report.authentication.signature_image}" alt="Signature"/>` : ''}
+        <div class="esign-name">${escapeHtml(report.authentication.signer_name)}</div>
+        <div class="esign-line">${escapeHtml(report.authentication.designation || 'Authorized Signatory')}</div>
+        <div class="esign-line">Reg. No.: ${escapeHtml(report.authentication.registration_no)}</div>
+      </div>
+      <div class="esign-right">
+        <div class="esign-title">Electronically authenticated${report.authentication.state && report.authentication.state !== 'Authentic' ? ` — ${escapeHtml(report.authentication.state.toUpperCase())}` : ''}</div>
+        <div class="esign-line">Signed on ${escapeHtml(report.authentication.signed_at)} using the signer's login credentials.</div>
+        <div class="esign-line">Report seal: ${escapeHtml(report.authentication.hash_short)}</div>
+        ${report.dsc ? '<div class="esign-line">Digitally signed with a Digital Signature Certificate — open this PDF in Adobe Reader to verify the signature.</div>' : ''}
+        <div class="esign-line">Scan the QR code on this report to verify authenticity.</div>
+      </div>
+    </div>` : `
     <div class="signature">
       <div>LAB PATHOLOGIST</div>
       <div>${escapeHtml(report.verified_by_name || '')}</div>
-    </div>
+    </div>`}
 
     <div class="note">
       <h3>Note</h3>
@@ -389,6 +419,14 @@ function getBrowser() {
 // on, exactly like a PDFKit document stream. Every existing call site
 // (labController.js, patientController.js) keeps working unmodified.
 export async function generateLabReportPDFStream(reportData) {
+  // A report authorised with a doctor's Digital Signature Certificate is a fixed,
+  // signed document: every copy is that same file, never a re-rendering. Either
+  // handed in (the approval itself, still uncommitted) or found by sample.
+  if (!reportData.dscSigner && !reportData.noServerSign) {
+    const kept = reportData.signed_pdf || await storedSignedPdf(reportData.sample_id).catch(() => null);
+    if (kept) return Readable.from([Buffer.from(kept)]);
+  }
+
   let qrDataUri = null;
   if (reportData.report_url) {
     try {
@@ -400,7 +438,12 @@ export async function generateLabReportPDFStream(reportData) {
   }
 
   const nameMap = await getParameterNameMap();
-  const html = buildReportHtml(reportData, qrDataUri, nameMap);
+  // An authorised, untampered report is also signed with the Digital Signature
+  // Certificate when one is configured (see dscSigner.js) — never a report
+  // whose login-based authentication is altered or revoked.
+  // noServerSign: the PDF is being prepared for the doctor's USB token to sign (Poxia DSC Agent).
+  const dscOn = !reportData.noServerSign && (!!reportData.dscSigner || dscConfigured()) && reportData.authentication?.state === 'Authentic';
+  const html = buildReportHtml({ ...reportData, dsc: dscOn }, qrDataUri, nameMap);
 
   // Puppeteer's headerTemplate is a separate, sandboxed render that repeats
   // on every page automatically — the only reliable way to keep the report
@@ -497,6 +540,13 @@ export async function generateLabReportPDFStream(reportData) {
         pageRanges: '1',
       });
       finalBuffer = await stitchFirstPage(page1Buffer, fullBuffer);
+    }
+
+    if (dscOn) {
+      finalBuffer = await signPdfIfConfigured(finalBuffer, {
+        reason: `Authorised laboratory report — ${reportData.authentication.signer_name || 'authorised signatory'}`,
+        location: hospitalName,
+      }, reportData.dscSigner || null);
     }
 
     // Readable.from(buffer) iterates a Buffer byte-by-byte (it's iterable,

@@ -1,0 +1,74 @@
+/* Queue Management — operator screen. Neutral, table-first layout in the
+   same token language as the other admin pages (Roboto, slate neutrals,
+   single blue accent, 10px radius). */
+.qm-page {
+  --qm-ink: #0f172a; --qm-ink-2: #334155; --qm-ink-3: #64748b; --qm-ink-4: #94a3b8;
+  --qm-line: #e2e8f0; --qm-wash: #f8fafc; --qm-blue: #1d4ed8;
+  font-family: 'Roboto', system-ui, sans-serif;
+  padding: 28px 32px 48px; background: #f4f6fa; min-height: 100vh; color: var(--qm-ink);
+}
+
+.qm-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 22px; flex-wrap: wrap; }
+.qm-header h1 { margin: 0 0 4px; font-size: 24px; font-weight: 700; letter-spacing: -0.4px; }
+.qm-header p { margin: 0; font-size: 13.5px; color: var(--qm-ink-3); max-width: 640px; line-height: 1.55; }
+
+.qm-kpis { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.qm-kpi { background: #fff; border: 1px solid var(--qm-line); border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 4px; }
+.qm-kpi-label { font-size: 11px; font-weight: 700; color: var(--qm-ink-4); text-transform: uppercase; letter-spacing: 0.06em; }
+.qm-kpi-value { font-size: 28px; font-weight: 700; color: var(--qm-ink); line-height: 1; }
+
+.qm-card { background: #fff; border: 1px solid var(--qm-line); border-radius: 12px; overflow: hidden; }
+
+.qm-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--qm-line); background: var(--qm-wash); flex-wrap: wrap; }
+.qm-toolbar-right { display: flex; gap: 8px; }
+.qm-tabs { display: flex; gap: 4px; }
+.qm-tab { border: none; background: transparent; padding: 8px 16px; border-radius: 8px; font: 600 13px 'Roboto', sans-serif; color: var(--qm-ink-3); cursor: pointer; }
+.qm-tab:hover { background: #eef2f7; }
+.qm-tab.active { background: var(--qm-blue); color: #fff; }
+
+.qm-input { height: 36px; padding: 0 12px; border: 1.5px solid var(--qm-line); border-radius: 8px; background: #fff; font: 13.5px 'Roboto', sans-serif; color: var(--qm-ink); box-sizing: border-box; }
+.qm-input:focus { outline: none; border-color: var(--qm-blue); box-shadow: 0 0 0 3px rgba(29,78,216,0.12); }
+
+.qm-issue { display: flex; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--qm-line); }
+.qm-issue .qm-input:first-child { flex: 1; max-width: 320px; }
+.qm-note { padding: 12px 18px; font-size: 13px; color: var(--qm-ink-3); border-bottom: 1px solid var(--qm-line); }
+.qm-next { padding: 10px 18px; font-size: 13px; color: var(--qm-ink-2); background: #eff6ff; border-bottom: 1px solid #dbeafe; }
+
+.qm-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 8px; border: 1.5px solid transparent; font: 600 12.5px 'Roboto', sans-serif; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+.qm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.qm-btn-primary { background: var(--qm-blue); color: #fff; }
+.qm-btn-primary:hover:not(:disabled) { background: #1e40af; }
+.qm-btn-success { background: #059669; color: #fff; }
+.qm-btn-success:hover:not(:disabled) { background: #047857; }
+.qm-btn-ghost { background: #fff; color: var(--qm-ink-2); border-color: var(--qm-line); }
+.qm-btn-ghost:hover:not(:disabled) { background: var(--qm-wash); }
+.qm-btn-danger { background: #fff; color: #b91c1c; border-color: #fecaca; }
+.qm-btn-danger:hover:not(:disabled) { background: #fef2f2; }
+
+.qm-table-wrap { overflow-x: auto; }
+.qm-table { width: 100%; border-collapse: collapse; min-width: 900px; }
+.qm-table th { text-align: left; padding: 10px 14px; font-size: 10.5px; font-weight: 700; color: var(--qm-ink-4); text-transform: uppercase; letter-spacing: 0.06em; background: var(--qm-wash); border-bottom: 1px solid var(--qm-line); }
+.qm-table td { padding: 11px 14px; font-size: 13px; color: var(--qm-ink-2); border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.qm-table tbody tr:hover { background: var(--qm-wash); }
+.qm-empty { text-align: center; padding: 36px !important; color: var(--qm-ink-4) !important; }
+.qm-token { font-size: 16px; font-weight: 700; color: var(--qm-ink); letter-spacing: 0.3px; }
+.qm-patient { font-weight: 600; color: var(--qm-ink); }
+.qm-sub { font-size: 11.5px; color: var(--qm-ink-4); }
+.qm-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+.qm-status { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+.qm-status-waiting    { background: #fef3c7; color: #92400e; }
+.qm-status-called     { background: #dbeafe; color: #1e40af; }
+.qm-status-in-service { background: #ede9fe; color: #5b21b6; }
+.qm-status-completed  { background: #dcfce7; color: #166534; }
+.qm-status-skipped    { background: #e2e8f0; color: #475569; }
+.qm-status-cancelled  { background: #fee2e2; color: #991b1b; }
+
+.qm-pri { padding: 2px 8px; border-radius: 99px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
+.qm-pri-stat   { background: #fee2e2; color: #b91c1c; }
+.qm-pri-urgent { background: #fef3c7; color: #b45309; }
+
+@media (max-width: 720px) {
+  .qm-page { padding: 18px 14px 40px; }
+  .qm-kpis { grid-template-columns: repeat(2, 1fr); }
+}

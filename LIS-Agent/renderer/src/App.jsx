@@ -13,7 +13,15 @@ import EditResults from "./pages/EditResults";
 import KyroSetupCliniQuant from "./pages/KyroSetupCliniQuant";
 import MasterSheet from "./pages/MasterSheet";
 import TodayResults from "./pages/TodayResults";
+import SampleRejection from "./pages/SampleRejection";
+import SampleTransfer from "./pages/SampleTransfer";
+import CriticalAlerts from "./pages/CriticalAlerts";
+import Maintenance from "./pages/Maintenance";
+import Reagents from "./pages/Reagents";
 import UnmappedTests from "./pages/UnmappedTests";
+import Registration from "./pages/Registration";
+import SampleCollection from "./pages/SampleCollection";
+import OfflineQueue from "./pages/OfflineQueue";
 
 export default function App() {
   return (
@@ -32,7 +40,15 @@ export default function App() {
         <Route path="/setup/cliniquant" element={<Layout><KyroSetupCliniQuant /></Layout>} />
         <Route path="/master-sheet" element={<Layout><MasterSheet /></Layout>} />
         <Route path="/today-results" element={<Layout><TodayResults /></Layout>} />
+        <Route path="/reagents" element={<Layout><Reagents /></Layout>} />
+        <Route path="/maintenance" element={<Layout><Maintenance /></Layout>} />
+        <Route path="/critical-alerts" element={<Layout><CriticalAlerts /></Layout>} />
+        <Route path="/sample-transfer" element={<Layout><SampleTransfer /></Layout>} />
+        <Route path="/sample-rejection" element={<Layout><SampleRejection /></Layout>} />
         <Route path="/unmapped-tests" element={<Layout><UnmappedTests /></Layout>} />
+        <Route path="/registration" element={<Layout><Registration /></Layout>} />
+        <Route path="/sample-collection" element={<Layout><SampleCollection /></Layout>} />
+        <Route path="/offline-queue" element={<Layout><OfflineQueue /></Layout>} />
       </Routes>
     </HashRouter>
   );

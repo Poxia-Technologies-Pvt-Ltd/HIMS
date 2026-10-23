@@ -1,10 +1,11 @@
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import {
   registerPatient,
   searchPatients,
   searchConsultants,
   loginByPhone,
+  requestPortalOtp,
+  verifyPortalOtp,
   getPatientProfile,
   getPatientReports,
   downloadPatientReport,
@@ -20,30 +21,12 @@ import {
   deleteCustomField,
 } from '../controllers/patientFieldConfigController.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.js';
-import { patientLoginLimiter } from '../middleware/rateLimiter.js';
+import { patientLoginLimiter, portalOtpLimiter } from '../middleware/rateLimiter.js';
+import { authenticatePatientPortal } from '../middleware/patientPortalAuth.js';
 
 const router = express.Router();
 
-// Verifies patient JWT and ensures the token owner matches the requested :phone param
-const authenticatePatientPortal = (req, res, next) => {
-  const token = req.headers['authorization']?.split(' ')[1];
-  if (!token) return res.status(401).json({ message: 'Access denied. No token provided.' });
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-    if (decoded.type !== 'patient') {
-      return res.status(403).json({ message: 'Access denied. Invalid token type.' });
-    }
-    if (decoded.phone !== req.params.phone) {
-      return res.status(403).json({ message: 'Access denied.' });
-    }
-    req.user = decoded;
-    next();
-  } catch {
-    return res.status(403).json({ message: 'Invalid or expired token' });
-  }
-};
-
-const STAFF_ROLES = ['Admin', 'Doctor', 'Lab Head', 'Lab Technician', 'Staff', 'Receptionist', 'Phlebotomist', 'Super Admin'];
+const STAFF_ROLES = ['Admin', 'Doctor', 'Lab Head', 'Lab Technician', 'Staff', 'Receptionist', 'Phlebotomist', 'Super Admin', 'Accounts Manager'];
 
 const DOCTOR_ROLES = ['Doctor', 'Admin', 'Super Admin'];
 
@@ -67,6 +50,8 @@ router.get('/:regNo/chart', authenticateToken, authorizeRole(DOCTOR_ROLES), getP
 
 // Patient Portal routes
 router.post('/portal/login', patientLoginLimiter, loginByPhone);
+router.post('/portal/otp/request', portalOtpLimiter, requestPortalOtp);
+router.post('/portal/otp/verify', portalOtpLimiter, verifyPortalOtp);
 router.get('/portal/profile/:phone', authenticatePatientPortal, getPatientProfile);
 router.get('/portal/reports/:phone', authenticatePatientPortal, getPatientReports);
 router.get('/portal/reports/:phone/:sampleId', authenticatePatientPortal, downloadPatientReport);

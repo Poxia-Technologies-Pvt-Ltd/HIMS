@@ -1,0 +1,13 @@
+.mt-list { display: grid; gap: 14px; }
+.mt-empty { padding: 40px; text-align: center; color: var(--text-muted); display: grid; gap: 8px; justify-items: center; }
+.mt-card { padding: 16px 20px; display: grid; gap: 4px; }
+.mt-machine { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; margin-bottom: 6px; } .mt-machine span { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.mt-task { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--border-subtle); }
+.mt-task > div:first-child { flex: 1; } .mt-task-name { font-weight: 600; }
+.mt-sub { font-size: 12px; color: var(--text-muted); }
+.mt-btn { padding: 7px 14px !important; font-size: 12.5px !important; }
+.mt-modal { max-width: 560px; padding: 24px 26px; }
+.mt-note { padding: 8px 12px; background: var(--surface-sunken); border-radius: 8px; font-size: 12.5px; }
+.mt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; } .mt-grid label { display: grid; gap: 5px; }
+.mt-msg { padding: 9px 12px; border-radius: 9px; font-size: 13px; margin-top: 12px; } .mt-msg.ok { background: #ecfdf5; color: #065f46; } .mt-msg.bad { background: #fef2f2; color: #991b1b; }
+.mt-actions { margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px; }

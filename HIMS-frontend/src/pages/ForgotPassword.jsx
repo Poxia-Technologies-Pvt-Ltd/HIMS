@@ -17,7 +17,7 @@ function ForgotPassword() {
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
-  const { svg: captchaSvg, captchaId, refresh: refreshCaptcha, applyCaptcha } = useCaptcha();
+  const { svg: captchaSvg, captchaId, refresh: refreshCaptcha, applyCaptcha, captchaEnabled } = useCaptcha();
 
   const slides = [
     { image: m1, text: 'Innovation for better healthcare' },
@@ -36,7 +36,7 @@ function ForgotPassword() {
       setError('Please enter your email.');
       return;
     }
-    if (!captchaText) {
+    if (captchaEnabled && !captchaText) {
       setError('Please enter the captcha text.');
       return;
     }
@@ -159,6 +159,7 @@ function ForgotPassword() {
                     />
                   </div>
 
+                  {captchaEnabled && (
                   <div className="form-group" style={{ marginTop: '20px' }}>
                     <label className="field-label">Captcha</label>
                     <div className="captcha-row">
@@ -190,6 +191,7 @@ function ForgotPassword() {
                       required
                     />
                   </div>
+                  )}
 
                   <button type="submit" className="btn-login-new" disabled={loading} style={{ marginTop: '24px' }}>
                     {loading ? 'Sending...' : 'Send Reset Link'}

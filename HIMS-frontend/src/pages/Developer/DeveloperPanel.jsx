@@ -77,7 +77,7 @@ function HospitalsTab() {
   const [modal, setModal]         = useState(null); // null | 'add' | 'edit' | 'district'
   const [editing, setEditing]     = useState(null);
   const [form, setForm]           = useState({ branch_name:'', hospital_code:'', category:'General Lab', address:'', contact_number:'', district_id:'', branch_level:'Center', parent_branch_id:'', status:'Active' });
-  const [districtForm, setDistrictForm] = useState({ name:'', state:'Jharkhand' });
+  const [districtForm, setDistrictForm] = useState({ name:'', state:'Karnataka' });
   const [saving, setSaving]       = useState(false);
   const [err, setErr]             = useState('');
 
@@ -121,7 +121,7 @@ function HospitalsTab() {
     <div>
       <div style={S.toolbar}>
         <input style={S.search} placeholder="Search hospitals…" value={search} onChange={e => setSearch(e.target.value)} />
-        <button style={S.btnSecondary} onClick={() => { setDistrictForm({ name:'', state:'Jharkhand' }); setErr(''); setModal('district'); }}>+ District</button>
+        <button style={S.btnSecondary} onClick={() => { setDistrictForm({ name:'', state:'Karnataka' }); setErr(''); setModal('district'); }}>+ District</button>
         <button style={S.btnPrimary}   onClick={openAdd}>+ Hospital</button>
       </div>
 

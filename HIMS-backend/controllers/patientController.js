@@ -2,7 +2,9 @@ import db from '../config/db.js';
 import { PUBLIC_API_URL } from '../config/publicUrl.js';
 import jwt from 'jsonwebtoken';
 import { generateLabReportPDFStream } from '../utils/pdfGenerator.js';
+import { recordDelivery, maskPhone } from '../utils/reportDelivery.js';
 import { createCaptcha, verifyCaptcha } from '../utils/captchaStore.js';
+import { issueOtp, checkOtp, normalizePhone } from '../services/otpService.js';
 import { getBlockedUntil, recordLoginFailure, recordLoginSuccess } from '../utils/bruteForceGuard.js';
 
 // Generate patient token
@@ -24,6 +26,10 @@ export const loginByPhone = async (req, res) => {
       message: 'Too many failed login attempts from this network. Try again in 24 hours.',
       blockedUntil: new Date(blockedUntil).toISOString(),
     });
+  }
+
+  if (process.env.PORTAL_REQUIRE_OTP === 'true') {
+    return res.status(403).json({ success: false, message: 'Please sign in with the one-time code sent to your mobile number.', otp_required: true });
   }
 
   try {
@@ -250,28 +256,9 @@ export const downloadPatientReport = async (req, res) => {
 };
 
 // Patient Portal: Generate and download PDF report
-export const downloadPatientReportPDF = async (req, res) => {
+// Streams the PDF of an approved report. The caller has already checked who may see it.
+export async function sendApprovedReportPdf(res, sampleId, { referredBy = 'Self' } = {}) {
   try {
-    const { phone, sampleId } = req.params;
-
-    // Verify patient owns this report
-    const [verifyRows] = await db.query(
-      `SELECT tr.id
-      FROM lab_test_result tr
-      JOIN bill_items bi ON tr.sample_id = bi.sample_id
-      JOIN bills b ON bi.bill_id = b.id
-      JOIN patients p ON b.patient_id = p.id
-      WHERE tr.sample_id = ? AND p.telephone = ? AND tr.status = 'Approved'`,
-      [sampleId, phone]
-    );
-
-    if (!verifyRows || verifyRows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Report not found or access denied'
-      });
-    }
-
     // Fetch full report data
     const [rows] = await db.query(
       `SELECT
@@ -361,7 +348,7 @@ export const downloadPatientReportPDF = async (req, res) => {
       sample_id: report.sample_id,
       gender: report.gender || 'N/A',
       age: age,
-      referred_by: 'Self',
+      referred_by: referredBy,
       centre: report.lab_name || report.branch_name || 'MERIL HIMS',
       registration_date: formatDate(report.tested_at),
       tested_by_name: report.tested_by_name || 'N/A',
@@ -397,6 +384,38 @@ export const downloadPatientReportPDF = async (req, res) => {
     doc.pipe(res);
 
   } catch (error) {
+    console.error('Error generating report PDF:', error);
+    if (!res.headersSent) res.status(500).json({ success: false, message: 'Server error generating PDF' });
+  }
+}
+
+export const downloadPatientReportPDF = async (req, res) => {
+  try {
+    const { phone, sampleId } = req.params;
+
+    // Verify patient owns this report
+    const [verifyRows] = await db.query(
+      `SELECT tr.id
+      FROM lab_test_result tr
+      JOIN bill_items bi ON tr.sample_id = bi.sample_id
+      JOIN bills b ON bi.bill_id = b.id
+      JOIN patients p ON b.patient_id = p.id
+      WHERE tr.sample_id = ? AND p.telephone = ? AND tr.status = 'Approved'`,
+      [sampleId, phone]
+    );
+
+    if (!verifyRows || verifyRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Report not found or access denied'
+      });
+    }
+
+    await recordDelivery({ sampleId, channel: 'Portal download', recipient: maskPhone(phone), status: 'Delivered', triggeredBy: 'Patient portal', req });
+
+    return sendApprovedReportPdf(res, sampleId);
+
+  } catch (error) {
     console.error('Error generating patient PDF:', error);
     res.status(500).json({
       success: false,
@@ -421,7 +440,7 @@ async function reserveRegNo(connection, branchId) {
   const effectiveBranchId = branchId || 0; // 0 bucket for patients with no branch_id
   await connection.query(
     `INSERT INTO patient_reg_sequences (branch_id, year, last_seq)
-     VALUES (?, ?, 1)
+     VALUES (?, ?, LAST_INSERT_ID(1))
      ON DUPLICATE KEY UPDATE last_seq = LAST_INSERT_ID(last_seq + 1)`,
     [effectiveBranchId, year]
   );
@@ -448,16 +467,28 @@ export const registerPatient = async (req, res) => {
       title, firstName, middleName, lastName, dob, gender,
       aadharNumber, abhaId,
       maritalStatus, occupation, language, educationLevel, religion,
-      citizen, emailId, telephone, fileRequired,
+      citizen, emailId, telephone, fileRequired, reportConsent,
       address, suburb, city, country, postalCode, postalAddress,
       kinSameAddress, kinName, kinRelation, kinTelephone,
       kinAddress, kinSuburb, kinCity, kinCountry, kinCode,
       payerType, insuranceProvider, policyNumber,
-      branch_id,
+      branch_id: bodyBranchId,
       // { [field_key]: value } for admin-defined custom fields — see
       // patient_custom_field_values / patientFieldConfigController.js.
       customFields,
+      // Set by the LIS-Agent when it registers a patient that was saved while
+      // offline (tender #59): its own reference makes the call idempotent.
+      clientRef, provisionalId, offlineRegisteredAt,
     } = data;
+    // A machine registers only for its own facility.
+    const branch_id = req.user?.isDeviceKey && req.user.branch_id ? req.user.branch_id : bodyBranchId;
+
+    if (clientRef) {
+      const [[done]] = await connection.query('SELECT id, reg_no FROM patients WHERE client_ref = ?', [String(clientRef)]);
+      if (done) {
+        return res.status(200).json({ success: true, message: 'Patient already registered', patientId: done.id, regNo: done.reg_no, alreadySynced: true });
+      }
+    }
 
     // Required-field validation now also honors whatever an Admin has
     // configured via Settings > Patient Field Config, not just the two
@@ -515,12 +546,25 @@ export const registerPatient = async (req, res) => {
 
     const [result] = await connection.query(query, values);
 
+    // Consent to digital report delivery, when it was asked (tender #44).
+    if (reportConsent === 'Agreed' || reportConsent === 'Declined') {
+      await connection.query('UPDATE patients SET report_consent = ?, report_consent_at = NOW() WHERE id = ?',
+        [reportConsent === 'Agreed' ? 1 : 0, result.insertId]);
+    }
+
     const customEntries = Object.entries(customFields || {}).filter(([, v]) => v !== undefined && v !== null && v !== '');
     if (customEntries.length > 0) {
       await connection.query(
         `INSERT INTO patient_custom_field_values (patient_id, field_key, value) VALUES ${customEntries.map(() => '(?, ?, ?)').join(', ')}`,
         customEntries.flatMap(([key, value]) => [result.insertId, key, String(value)])
       );
+    }
+
+    if (clientRef) {
+      const at = offlineRegisteredAt ? new Date(offlineRegisteredAt) : null;
+      await connection.query('UPDATE patients SET client_ref = ?, provisional_id = ?, offline_registered_at = ? WHERE id = ?',
+        [String(clientRef).slice(0, 48), provisionalId ? String(provisionalId).slice(0, 40) : null,
+          at && !Number.isNaN(at.getTime()) ? at : null, result.insertId]);
     }
 
     await connection.commit();
@@ -535,6 +579,11 @@ export const registerPatient = async (req, res) => {
   } catch (error) {
     await connection.rollback();
     console.error('Error saving patient:', error);
+    if (error.code === 'ER_DUP_ENTRY' && /client_ref/.test(error.message) && req.body?.clientRef) {
+      // Two syncs of the same offline registration raced; the other won.
+      const [[done]] = await db.query('SELECT id, reg_no FROM patients WHERE client_ref = ?', [String(req.body.clientRef)]);
+      if (done) return res.status(200).json({ success: true, message: 'Patient already registered', patientId: done.id, regNo: done.reg_no, alreadySynced: true });
+    }
     if (error.code === 'ER_DUP_ENTRY') {
       // Astronomically unlikely given reserveRegNo's atomic counter, but
       // kept as a safety net rather than surfacing a raw 500.
@@ -576,11 +625,12 @@ export const searchPatients = async (req, res) => {
            OR email_id LIKE ?
            OR aadhar_number LIKE ?
            OR first_name LIKE ?
-           OR last_name LIKE ?)
+           OR last_name LIKE ?
+           OR reg_no LIKE ?)
            ${branchClause}
         LIMIT 20
       `;
-      params = [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`];
+      params = [`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`];
     }
 
     if (scope) params.push(scope);
@@ -772,3 +822,49 @@ export const getPatientByPhone = async (req, res) => {
   }
 };
 
+
+// ── Patient portal: one-time-password login (tender #41, #48) ────────────────────────────────
+const PHONE_MATCH = "RIGHT(REGEXP_REPLACE(COALESCE(telephone, ''), '[^0-9]', ''), 10) = ?";
+
+// POST /portal/otp/request { phone, captchaId, captchaText }
+// Answers the same whether or not the number is registered, so it cannot be used to find out.
+export const requestPortalOtp = async (req, res) => {
+  try {
+    const { phone, captchaId, captchaText } = req.body || {};
+    if (!verifyCaptcha(captchaId, captchaText)) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired captcha', captcha: createCaptcha() });
+    }
+    const p = normalizePhone(phone);
+    if (p.length !== 10) return res.status(400).json({ success: false, message: 'Enter a valid 10-digit mobile number.', captcha: createCaptcha() });
+    const [[known]] = await db.query(`SELECT COUNT(*) AS n FROM patients WHERE ${PHONE_MATCH}`, [p]);
+    const generic = { success: true, message: 'If this number is registered, a 6-digit code has been sent to it.', expires_in: 300 };
+    if (!known.n) return res.json(generic);
+    const r = await issueOtp({ audience: 'patient', phone: p, ip: req.ip });
+    if (!r.ok) return res.status(r.status || 400).json({ success: false, message: r.message, captcha: createCaptcha() });
+    return res.json({ ...generic, ...(r.dev_code ? { dev_code: r.dev_code } : {}) });
+  } catch (error) {
+    console.error('Error requesting portal OTP:', error);
+    res.status(500).json({ success: false, message: 'Server error', captcha: createCaptcha() });
+  }
+};
+
+// POST /portal/otp/verify { phone, code } → the same payload as the date-of-birth login
+export const verifyPortalOtp = async (req, res) => {
+  const blockedUntil = getBlockedUntil(req.ip);
+  if (blockedUntil) return res.status(429).json({ success: false, message: 'Too many failed attempts from this network. Try again later.' });
+  try {
+    const { phone, code } = req.body || {};
+    const p = normalizePhone(phone);
+    const check = await checkOtp({ audience: 'patient', phone: p, code });
+    if (!check.ok) { recordLoginFailure(req.ip); return res.status(401).json({ success: false, message: check.message }); }
+    const [patients] = await db.query(`SELECT * FROM patients WHERE ${PHONE_MATCH} ORDER BY id`, [p]);
+    if (!patients.length) return res.status(401).json({ success: false, message: 'No patient is registered with this number.' });
+    recordLoginSuccess(req.ip);
+    const shape = (x) => ({ id: x.id, reg_no: x.reg_no, first_name: x.first_name, last_name: x.last_name, phone: x.telephone, email: x.email_id, dob: x.dob, gender: x.gender });
+    const people = patients.map((x) => ({ ...shape(x), token: generatePatientToken(x.id, x.telephone) }));
+    res.json({ success: true, message: 'Login successful', patient: shape(patients[0]), token: people[0].token, patients: people.length > 1 ? people : undefined });
+  } catch (error) {
+    console.error('Error verifying portal OTP:', error);
+    res.status(500).json({ success: false, message: 'Server error during login' });
+  }
+};

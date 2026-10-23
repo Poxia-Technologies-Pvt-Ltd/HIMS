@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import { generateSampleIdForItem } from '../utils/sampleId.js';
 
 // Imports lab orders scraped from CARE HMIS by the browser extension.
 //
@@ -385,29 +386,14 @@ export const importCareOrders = async (req, res) => {
       // every test on the bill at once, so a CBC result would also land on
       // their Urine R/E and CRP.
       //
-      // Uses the same atomic per-branch/per-day sequence as
-      // labController.generateSampleId, so bridge-created and manually-created
-      // sample IDs can never collide. 5000 is the pathology/serology range,
-      // matching the placeholder category these tests are filed under.
-      const DEPT_KEY = '5000';
-      const hospCode = (branch.hospital_code || 'LAB').replace(/\s+/g, '');
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-
+      // Uses the shared generator (utils/sampleId.js) — the same atomic
+      // per-branch/per-day counter, date handling and cross-facility
+      // uniqueness registry as billing and manual acknowledge, so
+      // bridge-created and manually-created sample IDs can never collide.
+      // 'Pathology' selects the 5000 range these tests are filed under.
       const itemSamples = [];
       for (const item of items) {
-        await conn.query(
-          `INSERT INTO lab_sample_sequences (branch_id, seq_date, dept_key, last_seq)
-           VALUES (?, CURDATE(), ?, ?)
-           ON DUPLICATE KEY UPDATE last_seq = last_seq + 1`,
-          [branch_id, DEPT_KEY, Number(DEPT_KEY)]
-        );
-        const [[seq]] = await conn.query(
-          `SELECT last_seq FROM lab_sample_sequences
-            WHERE branch_id = ? AND seq_date = CURDATE() AND dept_key = ?`,
-          [branch_id, DEPT_KEY]
-        );
-        const shortId = String(seq.last_seq).padStart(4, '0');
-        const sampleId = `LAB-${hospCode}-${dateStr}-${shortId}`;
+        const { sampleId, shortId } = await generateSampleIdForItem(conn, branch_id, 'Pathology');
 
         await conn.query(
           `INSERT INTO bill_items

@@ -1,0 +1,39 @@
+/* Settings → Payment Settings (pages/Settings/PaymentSettings.jsx). Builds on Governance.css. */
+.ps-page { max-width: 1120px; }
+.ps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.ps-card { padding: 0; margin: 0; }
+.ps-card-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px; border-bottom: 1px solid #e2e8f0; color: #1d4ed8; }
+.ps-card-head > div { flex: 1; }
+.ps-card-head h3 { margin: 0; font-size: 15px; color: #0f172a; }
+.ps-card-head p { margin: 2px 0 0; font-size: 12.5px; color: #64748b; }
+.ps-body { display: grid; gap: 14px; padding: 16px 18px; }
+.ps-off { font-size: 13px; color: #64748b; }
+.ps-field { display: grid; gap: 6px; }
+.ps-field > span { font-size: 12px; font-weight: 700; color: #334155; }
+.ps-select { height: 38px; padding: 0 10px; border: 1.5px solid #e2e8f0; border-radius: 9px; font: inherit; font-size: 14px; background: #fff; color: #0f172a; }
+.ps-affix { display: inline-flex; align-items: center; width: 180px; border: 1.5px solid #e2e8f0; border-radius: 9px; overflow: hidden; background: #fff; }
+.ps-affix b { padding: 0 10px; color: #64748b; font-weight: 700; background: #f8fafc; align-self: stretch; display: grid; place-items: center; }
+.ps-affix input { flex: 1; min-width: 0; height: 38px; border: 0; padding: 0 10px; font: inherit; font-size: 15px; text-align: right; outline: none; }
+.ps-options { display: grid; gap: 8px; }
+.ps-option { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1.5px solid #e2e8f0; border-radius: 10px; cursor: pointer; }
+.ps-option.on { border-color: #1d4ed8; background: #eff6ff; }
+.ps-option input { margin-top: 3px; }
+.ps-option b, .ps-check b { display: block; font-size: 13.5px; color: #0f172a; }
+.ps-option small, .ps-check small { display: block; font-size: 12px; color: #64748b; margin-top: 2px; }
+.ps-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ps-method { display: grid; justify-items: center; gap: 4px; padding: 10px 6px; border: 1.5px solid #e2e8f0; border-radius: 10px; background: #fff; color: #64748b; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.ps-method i { font-style: normal; font-size: 10.5px; padding: 1px 8px; border-radius: 99px; background: #f1f5f9; color: #94a3b8; }
+.ps-method.on { border-color: #1d4ed8; background: #eff6ff; color: #1d4ed8; }
+.ps-method.on i { background: #dbeafe; color: #1d4ed8; }
+.ps-method:disabled, .ps-option input:disabled + span { cursor: not-allowed; }
+.ps-check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.ps-check input { margin-top: 3px; }
+.ps-switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; cursor: pointer; }
+.ps-switch input { opacity: 0; width: 0; height: 0; }
+.ps-switch span { position: absolute; inset: 0; border-radius: 99px; background: #cbd5e1; transition: background .15s; }
+.ps-switch span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.ps-switch input:checked + span { background: #1d4ed8; }
+.ps-switch input:checked + span::after { transform: translateX(18px); }
+.ps-switch input:disabled + span { opacity: .6; }
+@media (max-width: 900px) { .ps-grid { grid-template-columns: 1fr; } }
+.ps-check-title svg { vertical-align: -2px; }

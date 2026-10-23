@@ -1,4 +1,5 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const { API_BASE } = require('./apiBase');
 const deviceKeyStore = require('./deviceKeyStore');
 
@@ -27,6 +28,26 @@ apiClient.interceptors.request.use((config) => {
   const deviceKey = deviceKeyStore.getDeviceKey();
   if (deviceKey) config.headers['X-Device-Key'] = deviceKey;
 
+  // Integrity of what is sent (tender #111): the body is serialised here, once, and its SHA-256
+  // goes in X-Body-SHA256. The server hashes the bytes it received and refuses a mismatch; it
+  // also echoes the hash back, which the response check below compares.
+  const method = String(config.method || 'get').toLowerCase();
+  if (['post', 'put', 'patch', 'delete'].includes(method) && config.data !== undefined && config.data !== null) {
+    let body = null;
+    if (typeof config.data === 'string') body = config.data;
+    else if (Buffer.isBuffer(config.data) || typeof config.data !== 'object') body = null;
+    else if (Object.getPrototypeOf(config.data) === Object.prototype || Array.isArray(config.data)) {
+      body = JSON.stringify(config.data);
+      config.data = body;
+      if (!config.headers['Content-Type']) config.headers['Content-Type'] = 'application/json';
+    }
+    if (body !== null) {
+      const hash = crypto.createHash('sha256').update(body, 'utf8').digest('hex');
+      config.headers['X-Body-SHA256'] = hash;
+      config.__bodySha256 = hash;
+    }
+  }
+
   return config;
 });
 
@@ -42,7 +63,18 @@ apiClient.setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 apiClient.hasDeviceKey = () => !!deviceKeyStore.getDeviceKey();
 
 apiClient.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // The server echoes the checksum of what it received; if it is not what we sent, the transfer
+    // was damaged — treat it as a failed send so the item stays queued and goes again.
+    const sent = res.config?.__bodySha256;
+    const echoed = res.headers?.['x-received-body-sha256'];
+    if (sent && echoed && String(echoed).toLowerCase() !== sent) {
+      const e = new Error('The server did not receive exactly what was sent (integrity check failed).');
+      e.code = 'INTEGRITY';
+      throw e;
+    }
+    return res;
+  },
   (err) => {
     // 401 only. A 500, a timeout or a dropped link means the server or the
     // network is unwell, not that the key has been revoked — throwing to

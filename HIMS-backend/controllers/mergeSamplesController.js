@@ -1,4 +1,6 @@
 import db from '../config/db.js';
+import { generateSampleIdForItem } from '../utils/sampleId.js';
+import { recordMerge, actorFromReq } from '../utils/sampleLifecycle.js';
 
 // Merging several of a patient's tests onto one sample.
 //
@@ -16,6 +18,15 @@ import db from '../config/db.js';
 //
 // It is refused once any member has a result. At that point the tests have
 // diverged and re-pointing their IDs would orphan or duplicate real values.
+
+// "Whole Blood / Serum" -> {blood, serum}; "Serum / Plasma" -> {serum, plasma}.
+// Anticoagulant/handling words are dropped so "EDTA Blood" and "Blood" match.
+const specimenTokens = (type) => new Set(
+  String(type || '').toLowerCase()
+    .split(/[\/,;]|\bor\b/)
+    .map((t) => t.replace(/\b(whole|edta|citrate|heparin|fluoride|random|first|morning|sample|specimen)\b/g, '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+);
 
 /** GET /api/lab/mergeable?patient_id=…&branch_id=… — a patient's open tests. */
 export const getMergeableTests = async (req, res) => {
@@ -70,11 +81,19 @@ export const mergeSamples = async (req, res) => {
 
     const [items] = await conn.query(`
       SELECT bi.id, bi.service_name, bi.sample_id, bi.short_id, bi.status,
-             b.patient_id, b.branch_id,
+             b.patient_id, b.branch_id, lt.sample_type,
              (SELECT COUNT(*) FROM lab_test_result r
                WHERE r.bill_item_id = bi.id OR r.sample_id = bi.sample_id) AS has_result
         FROM bill_items bi JOIN bills b ON b.id = bi.bill_id
+        LEFT JOIN lab_tests lt ON lt.id = bi.service_id
        WHERE bi.id IN (?) FOR UPDATE`, [ids]);
+
+    // Staff outside Central can only touch their own facility's samples.
+    const scopeBranch = req.user?.role_level !== 'Central' ? req.user?.branch_id : null;
+    if (scopeBranch && items.some((i) => Number(i.branch_id) !== Number(scopeBranch))) {
+      await conn.rollback();
+      return res.status(404).json({ success: false, message: 'Some selected tests no longer exist' });
+    }
 
     if (items.length !== ids.length) {
       await conn.rollback();
@@ -90,6 +109,23 @@ export const mergeSamples = async (req, res) => {
         success: false,
         message: 'Those tests belong to different patients and cannot share a sample.',
       });
+    }
+
+    // One container holds one kind of specimen: serum and whole blood (or
+    // urine…) can't share a tube. The test master writes specimen types
+    // loosely ("Serum", "Serum / Plasma", "Whole Blood / Serum"), so this is a
+    // compatibility check, not string equality — the tests must share at
+    // least one specimen type they can all be run on.
+    const typed = items.filter((i) => (i.sample_type || '').trim());
+    if (typed.length > 1) {
+      const common = typed.map((i) => specimenTokens(i.sample_type)).reduce((a, b) => new Set([...a].filter((x) => b.has(x))));
+      if (common.size === 0) {
+        await conn.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `These tests need different specimen types (${[...new Set(typed.map((i) => i.sample_type))].join(' vs ')}) and cannot share one container.`,
+        });
+      }
     }
 
     const withResults = items.filter((i) => Number(i.has_result) > 0);
@@ -112,6 +148,13 @@ export const mergeSamples = async (req, res) => {
         WHERE id IN (?)`,
       [anchor.sample_id, anchor.short_id, items.map((i) => i.id)]
     );
+
+    await recordMerge(conn, {
+      anchor_sample_id: anchor.sample_id,
+      released_sample_ids: targets.map((t) => t.sample_id),
+      test_names: items.map((i) => i.service_name),
+      actor: actorFromReq(req),
+    });
 
     await conn.commit();
 
@@ -151,7 +194,8 @@ export const unmergeSample = async (req, res) => {
         FROM bill_items bi JOIN bills b ON b.id = bi.bill_id
        WHERE bi.id = ? FOR UPDATE`, [billItemId]);
 
-    if (!item) {
+    const scopeBranch = req.user?.role_level !== 'Central' ? req.user?.branch_id : null;
+    if (!item || (scopeBranch && Number(item.branch_id) !== Number(scopeBranch))) {
       await conn.rollback();
       return res.status(404).json({ success: false, message: 'Test not found' });
     }
@@ -163,24 +207,13 @@ export const unmergeSample = async (req, res) => {
       });
     }
 
-    // A fresh ID from the same per-branch/day sequence the rest of the system
-    // uses, so an unmerged test can never collide with a live one.
-    const DEPT_KEY = '5000';
-    await conn.query(
-      `INSERT INTO lab_sample_sequences (branch_id, seq_date, dept_key, last_seq)
-       VALUES (?, CURDATE(), ?, ?) ON DUPLICATE KEY UPDATE last_seq = last_seq + 1`,
-      [item.branch_id, DEPT_KEY, Number(DEPT_KEY)]
-    );
-    const [[seq]] = await conn.query(
-      `SELECT last_seq FROM lab_sample_sequences
-        WHERE branch_id = ? AND seq_date = CURDATE() AND dept_key = ?`,
-      [item.branch_id, DEPT_KEY]
-    );
-    const [[branch]] = await conn.query('SELECT hospital_code FROM branches WHERE id = ?', [item.branch_id]);
-
-    const shortId = String(seq.last_seq).padStart(4, '0');
-    const sampleId = `LAB-${(branch?.hospital_code || 'LAB').replace(/\s+/g, '')}-`
-                   + `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${shortId}`;
+    // A fresh ID from the shared generator (same counter, date handling and
+    // cross-facility uniqueness registry as everywhere else), so an unmerged
+    // test can never collide with a live one. 'Pathology' = the 5000 range
+    // this path has always used.
+    const { sampleId, shortId } = await generateSampleIdForItem(conn, item.branch_id, 'Pathology', {
+      ...actorFromReq(req),
+    });
 
     await conn.query(
       'UPDATE bill_items SET sample_id = ?, short_id = ?, merged_at = NULL WHERE id = ?',

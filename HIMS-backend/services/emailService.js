@@ -117,6 +117,45 @@ export async function sendPasswordResetEmail(toEmail, resetUrl, firstName) {
   });
 }
 
+// ─── Lab Report Email ────────────────────────────────────────────────────────
+
+// An authorised lab report, as a PDF attachment, to the patient's registered
+// e-mail address. The caller (utils/reportDelivery.js) has already checked the
+// recipient is the address on file and that the patient has not refused
+// digital delivery. Resolves to the SMTP message id for the delivery log.
+export async function sendLabReportEmail(toEmail, { patientName, testName, sampleId }, pdfBuffer) {
+  const { transporter, settings } = await getTransporter();
+
+  const hospitalName = escapeHtml(settings?.hospital_name || 'HIMS');
+  const html = `
+  <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#1e40af,#3b82f6);padding:24px 28px;">
+      <span style="color:#fff;font-size:18px;font-weight:800;">${hospitalName}</span>
+    </div>
+    <div style="padding:28px;color:#475569;">
+      <p style="margin:0 0 14px;">Dear <strong>${escapeHtml(patientName || 'Patient')}</strong>,</p>
+      <p style="margin:0 0 14px;">Your laboratory report is ready and is attached to this e-mail as a PDF.</p>
+      <table style="font-size:14px;margin:0 0 14px;">
+        <tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">Test</td><td><strong>${escapeHtml(testName || 'Lab Test')}</strong></td></tr>
+        <tr><td style="padding:2px 12px 2px 0;color:#94a3b8;">Sample ID</td><td>${escapeHtml(sampleId)}</td></tr>
+      </table>
+      <p style="margin:0;font-size:12px;color:#94a3b8;">The report carries a QR code that can be scanned to verify it is genuine. Please consult your doctor to interpret the results.</p>
+    </div>
+    <div style="background:#f1f5f9;padding:14px 28px;text-align:center;color:#94a3b8;font-size:12px;">
+      This is a system-generated email from ${hospitalName}. Please do not reply directly.
+    </div>
+  </div>`;
+
+  const info = await transporter.sendMail({
+    from: `"${settings?.smtp_from_name || settings?.hospital_name || 'HIMS'}" <${settings?.smtp_user || process.env.SMTP_USER}>`,
+    to: toEmail,
+    subject: `Your lab report — ${testName || 'Lab Test'} (${sampleId})`,
+    html,
+    attachments: [{ filename: `lab-report-${sampleId}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }],
+  });
+  return info?.messageId || null;
+}
+
 // ─── Main Email Sender ───────────────────────────────────────────────────────
 
 export async function sendPOEmail(po, vendorEmail, ccEmail, pdfBuffer = null) {

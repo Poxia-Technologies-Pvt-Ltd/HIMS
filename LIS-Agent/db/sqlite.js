@@ -105,6 +105,8 @@ db.serialize(() => {
       pushed_at TEXT
     )
   `);
+  // A message that failed validation (tender #30) keeps its text and the reason, and is never pushed.
+  db.run(`ALTER TABLE local_results ADD COLUMN raw_message TEXT`, () => {});
   db.run(`CREATE INDEX IF NOT EXISTS idx_local_results_status ON local_results(push_status)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_local_results_kind ON local_results(kind, sample_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_local_results_created ON local_results(created_at)`);
@@ -123,6 +125,67 @@ db.serialize(() => {
       cached_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // ── Offline mode (tender #59): registration and sample collection keep working
+  // with no network and are replayed to the server, oldest first, once it is back.
+  // A patient registered offline gets a provisional ID (printed on the slip) now
+  // and the official CRN when the registration syncs.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS offline_registrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      client_ref TEXT UNIQUE NOT NULL,
+      provisional_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      patient_name TEXT,
+      telephone TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      force_new INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      matches_json TEXT,
+      official_reg_no TEXT,
+      patient_id INTEGER,
+      link_note TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      synced_at TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_offreg_status ON offline_registrations(status)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS offline_collections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bill_id INTEGER NOT NULL,
+      bill_number TEXT,
+      patient_name TEXT,
+      collected_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      last_error TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      synced_at TEXT
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_offcol_status ON offline_collections(status, bill_id)`);
+  // Today's orders at this facility, refreshed while online, so the collection
+  // desk can be worked from the machine itself during an outage.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS collection_cache (
+      bill_id INTEGER PRIMARY KEY,
+      order_json TEXT NOT NULL,
+      fetched_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+});
+
+// Thin promise wrappers for the offline tables.
+const run = (sql, params = []) => new Promise((resolve, reject) => {
+  db.run(sql, params, function (err) { if (err) reject(err); else resolve({ lastID: this.lastID, changes: this.changes }); });
+});
+const get = (sql, params = []) => new Promise((resolve, reject) => {
+  db.get(sql, params, (err, row) => { if (err) reject(err); else resolve(row || null); });
+});
+const all = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => { if (err) reject(err); else resolve(rows); });
 });
 
 function saveSetting(key, value) {
@@ -201,8 +264,8 @@ function insertLocalResult(row) {
   return new Promise((resolve, reject) => {
     db.run(
       `INSERT INTO local_results
-        (kind, sample_id, bill_item_id, test_name, machine_no, machine_name, results_json, push_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (kind, sample_id, bill_item_id, test_name, machine_no, machine_name, results_json, push_status, last_error, raw_message)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         row.kind || 'mapped',
         row.sample_id || null,
@@ -212,6 +275,8 @@ function insertLocalResult(row) {
         row.machine_name || null,
         JSON.stringify(row.results || []),
         row.push_status || 'pending',
+        row.last_error || null,
+        row.raw_message ? String(row.raw_message).slice(0, 4000) : null,
       ],
       function (err) {
         if (err) reject(err);
@@ -324,6 +389,7 @@ function getCachedWorklistEntry(sampleId) {
 }
 
 module.exports = {
+  run, get, all,
   saveConfig, getConfig, deleteConfig, saveSetting, getSetting,
   insertLocalResult, updateLocalResultStatus, mapLocalResult, getLocalResult,
   listTodayResults, listUnmappedResults, listFailedOrPendingMapped,

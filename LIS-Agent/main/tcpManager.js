@@ -2,6 +2,8 @@ const net = require('net');
 const axios = require('./apiClient');
 const db = require('../db/sqlite');
 const resultQueue = require('./resultQueue');
+const { validateHl7 } = require('./frameValidator');
+const hostQuery = require('./hostQuery');
 const { resolveWorklistEntry } = require('./worklistResolver');
 
 function postAnalyzerEvent(machine, event, ip_address) {
@@ -467,7 +469,9 @@ async function processMindrayMessage(message, machine) {
     if (messageType === 'ORM^O01') {
         const sampleId = mindrayOrcSampleId(message);
         console.log(`🔍 Mindray BC-5130 worklist request for sample "${sampleId}"`);
-        return buildMindrayOrrResponse(controlId);
+        // Answer with the order itself; the bare acknowledgement is only the fallback.
+        const reply = await hostQuery.answerHl7Query(message).catch(() => null);
+        return reply || buildMindrayOrrResponse(controlId);
     }
 
     if (messageType === 'ORU^R01') {
@@ -555,6 +559,12 @@ async function startMindrayClient(machine, win) {
             const message = hl7Data.toString('utf-8');
             console.log(`\n========== RAW HL7 (Mindray BC-5130) ==========\n${message}`);
 
+            const mindrayCheck = validateHl7(message);
+            if (!mindrayCheck.ok) {
+                await resultQueue.recordRejected({ machine, protocol: 'HL7', problems: mindrayCheck.problems, raw: message });
+                return;
+            }
+
             try {
                 const reply = await processMindrayMessage(message, machine);
                 if (reply) {
@@ -639,9 +649,21 @@ async function startTCPServer(machine, win) {
                 console.log(`\n========== RAW HL7 (${machine.model || 'Unknown'}) ==========\n`);
                 console.log(message);
 
+                const queryReply = await hostQuery.answerHl7Query(message).catch((e) => { console.error('HL7 host query error:', e.message); return null; });
+                if (queryReply) {
+                    conn.write(hostQuery.mllp(queryReply), () => console.log('✅ Order sent to analyzer (host query)'));
+                    data_buffer = data_buffer.slice(fsCrIndex + 2);
+                    return;
+                }
+
                 const modelUpper = (machine.model || '').toUpperCase();
                 const isNameBasedObx = modelUpper.includes('CXL') || modelUpper.includes('CS-T240');
-                if (isNameBasedObx) {
+                // Validate the message before any of it is committed; a bad one is kept with the
+                // reason and the analyzer is told it was rejected (AR), not accepted (AA).
+                const hl7Check = validateHl7(message);
+                if (!hl7Check.ok) {
+                    await resultQueue.recordRejected({ machine, protocol: 'HL7', problems: hl7Check.problems, raw: message });
+                } else if (isNameBasedObx) {
                     await processNameBasedHL7(message, machine);
                 } else {
                     await processAltaHL7(message, machine);
@@ -650,7 +672,7 @@ async function startTCPServer(machine, win) {
                 // Send ACK
                 const ack_message = Buffer.concat([
                     VT,
-                    Buffer.from('MSH|^~\\&|LIS|||Analyzer||20260506120000||ACK^R01|1|P|2.3.1\rMSA|AA|1\r'),
+                    Buffer.from(`MSH|^~\\&|LIS|||Analyzer||20260506120000||ACK^R01|1|P|2.3.1\rMSA|${hl7Check.ok ? 'AA' : 'AR'}|1\r`),
                     FS,
                     CR
                 ]);

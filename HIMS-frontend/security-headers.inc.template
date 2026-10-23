@@ -29,7 +29,8 @@ add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 # the other. connect-src is templated ($CSP_CONNECT_SRC, set via the
 # container's env, defaults to same-origin only) because the backend API
 # lives on a different origin than this frontend in production — see
-# README/Dockerfile for how to set it. frame-src also needs blob: — the lab
+# README/Dockerfile for how to set it. http://127.0.0.1:8765 is the Poxia DSC
+# Agent running on the doctor's own PC (USB-token report signing). frame-src also needs blob: — the lab
 # report's Print button fetches the PDF itself and loads it into a hidden
 # <iframe src="blob:..."> to print (so it prints the real file, not a
 # re-rendered HTML approximation); without blob: here the iframe never
@@ -39,7 +40,7 @@ add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 # hosts allowed the stylesheet fetch (style-src) or the font files it
 # references (font-src) get silently blocked and the page just falls back
 # to system fonts with no visible error.
-add_header Content-Security-Policy "default-src 'none'; script-src 'self' https://translate.google.com https://translate.googleapis.com; style-src 'self' 'unsafe-inline' https://www.gstatic.com https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: https://www.gstatic.com https://fonts.gstatic.com; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://translate.googleapis.com ${CSP_CONNECT_SRC}; frame-src https://translate.google.com blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';" always;
+add_header Content-Security-Policy "default-src 'none'; script-src 'self' https://translate.google.com https://translate.googleapis.com https://checkout.razorpay.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://www.gstatic.com https://fonts.gstatic.com https://fonts.googleapis.com https://unpkg.com; img-src 'self' data: https://www.gstatic.com https://fonts.gstatic.com https://cdn.razorpay.com https://unpkg.com https://*.tile.openstreetmap.org; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://translate.googleapis.com https://api.razorpay.com https://lumberjack.razorpay.com https://nominatim.openstreetmap.org http://127.0.0.1:8765 ${CSP_CONNECT_SRC}; frame-src https://translate.google.com https://api.razorpay.com https://checkout.razorpay.com blob:; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self';" always;
 # Legacy header the scanner still checks for; modern browsers ignore it
 # (some even treat "1" as an XSS vector), but it's inert here either way.
 add_header X-XSS-Protection "1; mode=block" always;

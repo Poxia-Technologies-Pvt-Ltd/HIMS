@@ -1,0 +1,70 @@
+{
+  "name": "poxia-dsc-agent",
+  "version": "0.1.0",
+  "description": "Poxia DSC Agent — signs lab reports with a doctor's USB-token Digital Signature Certificate",
+  "author": "Poxia Technologies",
+  "main": "main/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-builder install-app-deps",
+    "test": "node test/protocol.test.js",
+    "dist:win": "electron-builder --win --x64",
+    "dist:mac": "electron-builder --mac",
+    "diagnose": "node tools/diagnose.js"
+  },
+  "build": {
+    "appId": "com.poxiatechnologies.dscagent",
+    "productName": "Poxia DSC Agent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json",
+      "!test/**",
+      "!tools/**"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "icon": "assets/icon.png",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Poxia-DSC-Agent-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Poxia DSC Agent",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "Poxia-DSC-Agent-${version}.dmg"
+    }
+  },
+  "dependencies": {
+    "node-forge": "^1.4.0",
+    "pkcs11js": "^2.1.7"
+  },
+  "devDependencies": {
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1"
+  }
+}

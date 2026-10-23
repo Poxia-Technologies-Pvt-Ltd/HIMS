@@ -1,15 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useParams, Navigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
-import m1 from '../assets/m1.png';
 import m2 from '../assets/m2.png';
 import m3 from '../assets/m3.png';
-import merilLogo from '../assets/meril.png';
+import { Hospital } from 'lucide-react';
 import '../assets/CSS/Login.css';
 import { useCaptcha } from '../hooks/useCaptcha';
+import { useHospital } from '../hooks/useHospital';
+import { portalById, homeFor } from '../utils/rolePortals';
+import { storeStaffSession } from '../utils/session';
 
 function Login() {
   const navigate = useNavigate();
+  // The role chosen on the start page (/login/:portal). The server only
+  // accepts accounts of that role from this screen.
+  const { portal: portalId } = useParams();
+  const portal = portalById(portalId);
+  const hospital = useHospital();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [captchaText, setCaptchaText] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -21,12 +28,12 @@ function Login() {
   const [blocked, setBlocked] = useState(false);
   const [focused, setFocused] = useState('');
   const [currentSlide, setCurrentSlide] = useState(0);
-  const { svg: captchaSvg, captchaId, refresh: refreshCaptcha, applyCaptcha } = useCaptcha();
+  const { svg: captchaSvg, captchaId, refresh: refreshCaptcha, applyCaptcha, captchaEnabled } = useCaptcha();
 
   const slides = [
-    { image: m1, text: 'Innovation for better healthcare' },
     { image: m2, text: 'State-of-the-art diagnostic facilities' },
-    { image: m3, text: 'Serving humanity with care' }
+    { image: m3, text: 'Serving humanity with care' },
+    // Replace these photos with the hospital's own (src/assets/m2.png, m3.png).
   ];
 
   useEffect(() => {
@@ -72,7 +79,7 @@ function Login() {
       setError('Please fill in all fields.');
       return;
     }
-    if (!captchaText) {
+    if (captchaEnabled && !captchaText) {
       setError('Please enter the captcha text.');
       return;
     }
@@ -90,7 +97,8 @@ function Login() {
           email: formData.email,
           password: formData.password,
           captchaId,
-          captchaText
+          captchaText,
+          portal: portal?.id,
         }),
       });
 
@@ -103,32 +111,9 @@ function Login() {
         throw err;
       }
 
-      // Clear any stale session data from a previous user before writing new values
-      ['hims_authed', 'hims_csrf', 'branch_id', 'hospital_code', 'role_level', 'role', 'district_id', 'password_change_required'].forEach(
-        key => localStorage.removeItem(key)
-      );
+      storeStaffSession(data);
 
-      // Store fresh session context. VAPT #9: the actual session token is
-      // never stored here — it arrived as an HttpOnly cookie on this
-      // response, invisible to JS. `hims_authed` is just a UI flag so
-      // RequireAuth/hasStaffToken know a session exists to redirect around;
-      // it grants nothing by itself.
-      localStorage.setItem('hims_authed', '1');
-      if (data.csrfToken) localStorage.setItem('hims_csrf', data.csrfToken);
-      if (data.id) localStorage.setItem('user_id', data.id);
-      if (data.branch_id !== undefined && data.branch_id !== null) localStorage.setItem('branch_id', data.branch_id);
-      if (data.hospital_code) localStorage.setItem('hospital_code', data.hospital_code);
-      if (data.role_level) localStorage.setItem('role_level', data.role_level);
-      if (data.role) localStorage.setItem('role', data.role);
-      if (data.district_id) localStorage.setItem('district_id', data.district_id);
-      localStorage.setItem('user', JSON.stringify(data)); // helpful for full context
-      localStorage.setItem('password_change_required', data.passwordChangeRequired ? '1' : '0');
-
-      navigate(
-        data.passwordChangeRequired
-          ? '/change-password'
-          : data.role === 'Doctor' ? '/doctor-dashboard' : '/dashboard'
-      );
+      navigate(data.passwordChangeRequired ? '/change-password' : homeFor(data.role));
     } catch (err) {
       setError(err.message);
       if (err.status === 429) {
@@ -146,6 +131,8 @@ function Login() {
     }
   };
 
+  if (!portal) return <Navigate to="/" replace />;
+
   return (
     <div className="auth-page">
       {/* ── Left Panel: Carousel ── */}
@@ -160,7 +147,7 @@ function Login() {
               <div className="carousel-content">
                 <div className="carousel-badge">
                   <span className="carousel-badge-dot"></span>
-                  Meril LIS — Live System
+                  {hospital.hospital_name || 'Hospital'}
                 </div>
                 <p className="carousel-text">{slide.text}</p>
               </div>
@@ -183,15 +170,20 @@ function Login() {
         <div className="auth-card-container">
           {/* Brand Logo in Card */}
           <div className="brand-header">
-            <img src={merilLogo} alt="Meril Logo" className="brand-logo-img" />
-            <span className="product-name">Meril LIS</span>
-            <p className="brand-motto">Laboratory Information System</p>
+            {hospital.logo_url
+              ? <img src={hospital.logo_url} alt="" className="brand-logo-img" />
+              : <Hospital size={40} color="#1a6fd4" />}
+            <span className="product-name">{hospital.hospital_name || 'Hospital'}</span>
+            <p className="brand-motto">Hospital Management System</p>
           </div>
 
           <div className="auth-card">
             <header className="auth-header">
-              <h1 className="auth-title">Welcome Back!</h1>
-              <p className="auth-subtitle">Sign in to your Meril LIS account</p>
+              <span className="rp-role-chip" style={{ background: portal.color }}>{portal.label}</span>
+              <h1 className="auth-title" style={{ marginTop: 10 }}>{portal.label} sign-in</h1>
+              <p className="auth-subtitle">
+                Sign in with your {portal.label.toLowerCase()} account · <Link to="/" style={{ color: '#4F46E5', fontWeight: 600 }}>Change role</Link>
+              </p>
             </header>
 
             {notice && !error && (
@@ -257,6 +249,7 @@ function Login() {
                 </div>
               </div>
 
+              {captchaEnabled && (
               <div className="form-group">
                 <label className="field-label">Captcha</label>
                 <div className="captcha-row">
@@ -288,6 +281,7 @@ function Login() {
                   required
                 />
               </div>
+              )}
 
               <div className="form-options">
                 <label className="remember-me">

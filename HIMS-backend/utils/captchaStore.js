@@ -19,7 +19,13 @@ const purgeExpired = () => {
 // size/case-sensitivity are mandated by the security checklist this feature
 // was built against: min 6 chars, alphanumeric, case sensitive. Do not relax
 // these without checking that requirement first.
+// LOGIN_CAPTCHA=true turns captchas on for every sign-in form. Off, the
+// captcha endpoint says so (the forms hide the field) and every check passes;
+// the IP and per-account lock-outs still apply.
+export const captchaEnabled = () => process.env.LOGIN_CAPTCHA === 'true';
+
 export const createCaptcha = () => {
+  if (!captchaEnabled()) return { captchaId: null, svg: '', disabled: true };
   purgeExpired();
 
   const { data, text } = svgCaptcha.create({
@@ -39,6 +45,7 @@ export const createCaptcha = () => {
 };
 
 export const verifyCaptcha = (captchaId, answer) => {
+  if (!captchaEnabled()) return true;
   if (!captchaId || !answer) return false;
 
   const entry = captchaStore.get(captchaId);

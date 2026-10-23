@@ -52,3 +52,21 @@ export const clearPatientSession = () => PATIENT_KEYS.forEach(k => localStorage.
 export const hasStaffToken = () => localStorage.getItem('hims_authed') === '1';
 export const hasDeveloperToken = () => localStorage.getItem('dev_authed') === '1';
 export const hasPatientToken = () => !!localStorage.getItem('patient_token');
+
+// Records a successful sign-in (password or temporary access) for the UI.
+// VAPT #9: the session token itself arrived as an HttpOnly cookie and is never
+// stored here — `hims_authed` is only a flag so route guards know a session exists.
+export const storeStaffSession = (data) => {
+  ['hims_authed', 'hims_csrf', 'branch_id', 'hospital_code', 'role_level', 'role', 'district_id', 'password_change_required']
+    .forEach((key) => localStorage.removeItem(key));
+  localStorage.setItem('hims_authed', '1');
+  if (data.csrfToken) localStorage.setItem('hims_csrf', data.csrfToken);
+  if (data.id) localStorage.setItem('user_id', data.id);
+  if (data.branch_id !== undefined && data.branch_id !== null) localStorage.setItem('branch_id', data.branch_id);
+  if (data.hospital_code) localStorage.setItem('hospital_code', data.hospital_code);
+  if (data.role_level) localStorage.setItem('role_level', data.role_level);
+  if (data.role) localStorage.setItem('role', data.role);
+  if (data.district_id) localStorage.setItem('district_id', data.district_id);
+  localStorage.setItem('user', JSON.stringify(data));
+  localStorage.setItem('password_change_required', data.passwordChangeRequired ? '1' : '0');
+};

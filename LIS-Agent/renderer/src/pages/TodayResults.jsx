@@ -10,6 +10,8 @@ const STATUS_META = {
   pushed:  { label: 'Pushed to server', Icon: CheckCircle2, cls: 'badge-success' },
   pending: { label: 'Not pushed yet',   Icon: Clock,        cls: 'badge-warning' },
   failed:  { label: 'Push failed',      Icon: XCircle,      cls: 'badge-danger' },
+  // Failed its protocol checks (checksum / structure) — kept with the reason, never turned into a result.
+  rejected: { label: 'Rejected — not accepted', Icon: XCircle, cls: 'badge-danger' },
 };
 
 function fmtTime(ts) {
@@ -54,7 +56,7 @@ export default function TodayResults() {
     try { await window.electronAPI.retryAllResults(); } finally { setRetryingAll(false); }
   };
 
-  const failedOrPendingCount = rows.filter((r) => r.push_status !== 'pushed' && !(r.kind === 'unmapped' && !r.sample_id)).length;
+  const failedOrPendingCount = rows.filter((r) => r.push_status !== 'pushed' && r.push_status !== 'rejected' && !(r.kind === 'unmapped' && !r.sample_id)).length;
 
   return (
     <div className="page" style={{ maxWidth: 1500 }}>
@@ -112,7 +114,7 @@ export default function TodayResults() {
                   return (
                     <tr key={r.id}>
                       <td>
-                        <div style={{ fontWeight: 800, color: 'var(--brand-blue)', fontSize: 14 }}>{r.sample_id || 'UNMAPPED'}</div>
+                        <div style={{ fontWeight: 800, color: r.push_status === 'rejected' ? '#b91c1c' : 'var(--brand-blue)', fontSize: 14 }}>{r.sample_id || (r.push_status === 'rejected' ? 'REJECTED' : 'UNMAPPED')}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{r.test_name || '—'}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.results?.length || 0} parameter{r.results?.length === 1 ? '' : 's'}</div>
                       </td>
@@ -126,13 +128,17 @@ export default function TodayResults() {
                             <meta.Icon size={12} /> {meta.label}
                           </span>
                         )}
-                        {r.last_error && r.push_status === 'failed' && (
+                        {r.last_error && (r.push_status === 'failed' || r.push_status === 'rejected') && (
                           <div style={{ fontSize: 10, color: 'var(--color-danger, #b91c1c)', marginTop: 4, maxWidth: 220 }}>{r.last_error}</div>
+                        )}
+                        {r.push_status === 'rejected' && r.raw_message && (
+                          <details style={{ marginTop: 4 }}><summary style={{ fontSize: 10, cursor: 'pointer' }}>What the analyzer sent</summary>
+                            <pre style={{ fontSize: 10, maxWidth: 260, maxHeight: 120, overflow: 'auto', whiteSpace: 'pre-wrap', margin: '4px 0 0' }}>{r.raw_message}</pre></details>
                         )}
                       </td>
                       <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{r.pushed_at ? fmtTime(r.pushed_at) : '—'}</td>
                       <td>
-                        {!isUnmapped && r.push_status !== 'pushed' && (
+                        {!isUnmapped && r.push_status !== 'pushed' && r.push_status !== 'rejected' && (
                           <button
                             className="btn btn-secondary"
                             style={{ padding: '5px 10px', fontSize: 12 }}

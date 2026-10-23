@@ -1,0 +1,54 @@
+name: Build & Release TV Kiosk
+
+# Triggered by a kiosk-specific tag, e.g.:
+#   git tag tv-v1.0.0 && git push origin tv-v1.0.0
+# Separate prefix from the LIS Agent's `v*` tags so releasing one never
+# rebuilds the other. Built on windows-latest so the NSIS installer is
+# produced natively; the deploy job then uploads it next to the LIS Agent
+# installer at ka-lims.poxiatechnologies.com/download/.
+on:
+  push:
+    tags:
+      - 'tv-v*'
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: TV-Kiosk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tv-kiosk-installer
+          path: |
+            TV-Kiosk/release/*.exe
+            TV-Kiosk/release/*.blockmap
+          if-no-files-found: error
+
+  deploy:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tv-kiosk-installer
+          path: dist-out
+      - name: Upload to ka-lims.poxiatechnologies.com/download/
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: 'dist-out/*'
+          target: ${{ vars.DEPLOY_PATH }}
+          strip_components: 1

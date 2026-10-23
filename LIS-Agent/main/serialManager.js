@@ -2,6 +2,8 @@ const { SerialPort } = require('serialport');
 const axios = require('./apiClient');
 const db = require('../db/sqlite');
 const resultQueue = require('./resultQueue');
+const { validateHl7, validateTextReport, validateBinaryFrame } = require('./frameValidator');
+const hostQuery = require('./hostQuery');
 const { resolveWorklistEntry } = require('./worklistResolver');
 
 function postAnalyzerEvent(machine, event) {
@@ -721,7 +723,10 @@ async function startBackgroundListener(machine, win) {
         const report = buffer.toString('ascii');
         buffer = Buffer.alloc(0);
 
-        if (report.trim()) {
+        const textCheck = validateTextReport(report);
+        if (report.trim() && !textCheck.ok) {
+          await resultQueue.recordRejected({ machine, protocol: 'Text report', problems: textCheck.problems, raw: report });
+        } else if (report.trim()) {
           console.log(`📨 [SILENCE TIMEOUT] Complete text report framed on ${machine.port} (${report.length} chars). Processing...`);
           await processTextMessage(report, protocol, machine, win).catch((e) =>
             console.error('Text report processing error:', e)
@@ -742,10 +747,18 @@ async function startBackgroundListener(machine, win) {
         const msg = raw.slice(start + 1, end);
         raw = raw.slice(end + 2);
 
-        if (msg.includes('MSH|')) {
-          await processHL7Message(msg, machine, win).catch((e) =>
-            console.error('HL7 processing error:', e)
-          );
+        const queryReply = msg.includes('MSH|') ? await hostQuery.answerHl7Query(msg).catch((e) => { console.error('HL7 host query error:', e.message); return null; }) : null;
+        if (queryReply) {
+          port.write(hostQuery.mllp(queryReply));
+        } else if (msg.includes('MSH|')) {
+          const hl7Check = validateHl7(msg);
+          if (!hl7Check.ok) {
+            await resultQueue.recordRejected({ machine, protocol: 'HL7', problems: hl7Check.problems, raw: msg });
+          } else {
+            await processHL7Message(msg, machine, win).catch((e) =>
+              console.error('HL7 processing error:', e)
+            );
+          }
         }
 
         start = raw.indexOf('\x0B');
@@ -784,9 +797,13 @@ async function startBackgroundListener(machine, win) {
           const records = astmRecords;
           astmRecords = [];
           if (records.length > 0) {
-            await processAstmTransmission(records, machine, win).catch((e) =>
-              console.error('ASTM transmission processing error:', e)
-            );
+            // A Q record is the analyzer asking what to run on a sample: answer it (two-way interface).
+            const answered = await hostQuery.answerAstmQuery(port, records).catch((e) => { console.error('ASTM host query error:', e.message); return false; });
+            if (!answered) {
+              await processAstmTransmission(records, machine, win).catch((e) =>
+                console.error('ASTM transmission processing error:', e)
+              );
+            }
           }
           progressed = true;
           continue;
@@ -805,6 +822,7 @@ async function startBackgroundListener(machine, win) {
           const calculated = astmChecksum(frame);
           if (checksumChars !== calculated) {
             console.warn(`⚠️  ${machine.model} ASTM checksum mismatch on ${machine.port} (got ${checksumChars}, expected ${calculated}) — NAK`);
+            resultQueue.recordRejected({ machine, protocol: 'ASTM', problems: [`frame checksum mismatch (got ${checksumChars}, expected ${calculated})`], raw: frame.toString('latin1') }).catch(() => {});
             port.write(Buffer.from([ASTM_NAK]));
             progressed = true;
             continue;
@@ -887,6 +905,12 @@ async function processIncomingFrame(frame, protocol, machine, win) {
   // Patient ID lives at bytes 3–8
   const framePatientId = frame.slice(3, 9).toString('ascii').trim();
   if (!framePatientId || framePatientId === '000000') return;
+
+  const frameCheck = validateBinaryFrame(frame, protocol);
+  if (!frameCheck.ok) {
+    await resultQueue.recordRejected({ machine, protocol: 'Binary frame', problems: frameCheck.problems, raw: frame.toString('latin1') });
+    return;
+  }
 
   console.log(`🔍 Received binary data for ID: ${framePatientId} from ${machine.unique_id}`);
 

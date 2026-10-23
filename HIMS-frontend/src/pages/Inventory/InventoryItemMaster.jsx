@@ -234,6 +234,7 @@ function InventoryItemMaster() {
             <option value="Consumable">Consumable</option>
             <option value="Reagent">Reagent</option>
             <option value="Equipment">Equipment</option>
+            <option value="Medicine">Medicine</option>
           </select>
         </div>
 
@@ -350,6 +351,7 @@ function InventoryItemMaster() {
                       <option value="Consumable">Consumable</option>
                       <option value="Reagent">Reagent</option>
                       <option value="Equipment">Equipment</option>
+                      <option value="Medicine">Medicine</option>
                     </select>
                   </div>
                   <div className="inv-form-group">

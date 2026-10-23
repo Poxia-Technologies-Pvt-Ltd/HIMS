@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
+  <title>Poxia DSC Agent</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo">P</span><div><h1>Poxia DSC Agent</h1><small id="version"></small></div></div>
+    <div class="pills"><span class="pill" id="pill-agent"></span><span class="pill" id="pill-token"></span></div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="status">Status</button>
+    <button class="tab" data-tab="settings">Settings</button>
+    <button class="tab" data-tab="activity">Activity</button>
+  </nav>
+
+  <main>
+    <section id="tab-status" class="tabpanel">
+      <div id="job" class="card hidden"></div>
+      <div id="idle" class="card"></div>
+    </section>
+
+    <section id="tab-settings" class="tabpanel hidden">
+      <form id="settings" class="card">
+        <h2>Settings</h2>
+        <label>LIMS servers this agent may sign for <small>one address per line, e.g. https://ka-lims.poxiatechnologies.com</small>
+          <textarea id="s-servers" rows="3" spellcheck="false"></textarea></label>
+        <label>LIMS web pages allowed to ask for a signature <small>one address per line (usually the same as above)</small>
+          <textarea id="s-origins" rows="3" spellcheck="false"></textarea></label>
+        <label>Extra PKCS#11 driver files <small>one full path per line — only if a token is not found automatically</small>
+          <textarea id="s-libs" rows="3" spellcheck="false"></textarea></label>
+        <div id="lib-status" class="libs"></div>
+        <div class="row">
+          <label>Keep the token unlocked for (seconds) <small>so several reports need one PIN. 0 = ask every time.</small>
+            <input id="s-idle" type="number" min="0" max="900" /></label>
+          <label>Port <small>this PC only</small><input id="s-port" type="number" min="1024" max="65535" /></label>
+        </div>
+        <label class="check"><input id="s-login" type="checkbox" /> Start the agent when this PC starts</label>
+        <details><summary>Developer test</summary>
+          <label>Sign with a .p12 file instead of a token <small>for rehearsals only — its password is typed as the PIN</small>
+            <input id="s-dev" type="text" spellcheck="false" /></label>
+        </details>
+        <div class="actions"><button type="submit" class="primary">Save settings</button><span id="settings-msg" class="msg"></span></div>
+      </form>
+    </section>
+
+    <section id="tab-activity" class="tabpanel hidden">
+      <div class="card"><h2>Recent activity</h2><p class="hint">What this agent did on this PC. A PIN is never recorded.</p><ul id="activity" class="activity"></ul></div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

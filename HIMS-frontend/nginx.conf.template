@@ -38,6 +38,14 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
+    # The Field app's service worker must be re-checked on every visit so a new version is picked up.
+    location = /field-sw.js {
+        include /etc/nginx/conf.d/security-headers.inc;
+        root   /usr/share/nginx/html;
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header Service-Worker-Allowed "/" always;
+    }
+
     # Hashed build assets (JS/CSS/images) are safe to cache aggressively —
     # a new deploy ships a new filename, so staleness isn't a risk.
     location ~* \.(?:js|css|png|jpg|jpeg|gif|svg|woff2?|ttf|ico)$ {

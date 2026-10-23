@@ -37,6 +37,7 @@ function PatientLayout() {
   const navItems = [
     { id: 'profile', label: 'My Profile', path: '/patient-portal/profile' },
     { id: 'reports', label: 'Lab Reports', path: '/patient-portal/reports' },
+    { id: 'appointments', label: 'Appointments', path: '/patient-portal/appointments' },
   ];
 
   if (!patient) return null;

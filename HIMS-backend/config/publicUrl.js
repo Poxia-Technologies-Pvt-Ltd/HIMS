@@ -9,3 +9,7 @@
 // wants, since narrowing the allowlist alone still leaves the pattern of
 // trusting a client header for externally-shared links.
 export const PUBLIC_API_URL = (process.env.PUBLIC_API_URL || `http://localhost:${process.env.PORT || 7005}`).replace(/\/+$/, '');
+
+// Where the web app itself is served (report verification pages open here).
+// Same origin as the API in production; set PUBLIC_APP_URL when they differ (local dev).
+export const PUBLIC_APP_URL = (process.env.PUBLIC_APP_URL || PUBLIC_API_URL).replace(/\/+$/, '');

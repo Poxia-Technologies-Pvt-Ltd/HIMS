@@ -9,11 +9,13 @@ import developerRoutes from './routes/developerRoutes.js';
 import patientRoutes from './routes/patientRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
 import billingRoutes from './routes/billingRoutes.js';
+import imagingRoutes from './routes/imagingRoutes.js';
 import staffRoutes from './routes/staffRoutes.js';
 import infraRoutes from './routes/infraRoutes.js';
 import dutyRoutes from './routes/dutyRoutes.js';
 import billingPackageRoutes from './routes/billingPackageRoutes.js';
 import freeSchemeRoutes from './routes/freeSchemeRoutes.js';
+import queueRoutes from './routes/queueRoutes.js';
 import departmentRoutes from './routes/departmentRoutes.js';
 import labRoutes from './routes/labRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
@@ -25,7 +27,6 @@ import inventoryTransactionRoutes from './routes/inventoryTransactionRoutes.js';
 import inventoryMappingRoutes from './routes/inventoryMappingRoutes.js';
 import inventoryAnalyticsRoutes from './routes/inventoryAnalyticsRoutes.js';
 import inventorySuggestionRoutes from './routes/inventorySuggestionRoutes.js';
-import inventoryTransferRoutes from './routes/inventoryTransferRoutes.js';
 import inventoryAccountsPayableRoutes from './routes/inventoryAccountsPayableRoutes.js';
 import inventoryProcurementRoutes from './routes/inventoryProcurementRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
@@ -33,11 +34,6 @@ import branchRoutes from './routes/branchRoutes.js';
 import orgRoutes from './routes/orgRoutes.js';
 import inventoryNetworkRoutes from './routes/inventoryNetworkRoutes.js';
 import hl7Routes from './routes/hl7Routes.js';
-import disasterRoutes from './routes/disasterRoutes.js';
-import careRoutes from './routes/careRoutes.js';
-import careBridgeRoutes from './routes/careBridgeRoutes.js';
-import careAdminRoutes from './routes/careAdminRoutes.js';
-import cdacRoutes from './routes/cdacRoutes.js';
 import publicUploadRoutes from './routes/publicUploadRoutes.js';
 import deviceKeyRoutes from './routes/deviceKeyRoutes.js';
 import db from './config/db.js';
@@ -45,6 +41,24 @@ import barcodeRoutes from './routes/barcodeRoutes.js';
 import prescriptionRoutes from './routes/prescriptionRoutes.js';
 import consultationRoutes from './routes/consultationRoutes.js';
 import { initCronJobs } from './jobs/cronJobs.js';
+import { auditTrail } from './middleware/auditTrail.js';
+import auditRoutes from './routes/auditRoutes.js';
+import privilegeReviewRoutes from './routes/privilegeReviewRoutes.js';
+import { captureBodyDigest, verifyBodyIntegrity } from './middleware/bodyIntegrity.js';
+import qualityRoutes from './routes/qualityRoutes.js';
+import fhirRoutes from './routes/fhirRoutes.js';
+import bloodBankRoutes from './routes/bloodBankRoutes.js';
+import poctRoutes from './routes/poctRoutes.js';
+import clinicianPortalRoutes, { clinicianAdminRouter } from './routes/clinicianRoutes.js';
+import equipmentRoutes from './routes/equipmentRoutes.js';
+import reportDeliveryRoutes, { whatsappWebhookRouter } from './routes/reportDeliveryRoutes.js';
+import dataExportRoutes from './routes/dataExportRoutes.js';
+import paymentRoutes, { testPriceRouter, paymentSettingsRouter } from './routes/paymentRoutes.js';
+import employeeRoutes from './routes/employeeRoutes.js';
+import rosterRoutes from './routes/rosterRoutes.js';
+import leaveRoutes from './routes/leaveRoutes.js';
+import attendanceRoutes from './routes/attendanceRoutes.js';
+import payrollRoutes from './routes/payrollRoutes.js';
 
 dotenv.config();
 
@@ -150,42 +164,6 @@ app.use((req, res, next) => {
 // (VAPT #9) before any route/middleware that calls authenticateToken.
 app.use(cookieParser());
 
-// CARE's gateway-registration screen runs its "Test Connection" check from the
-// operator's *browser*, not from CARE's servers — so the fetch carries CARE's
-// own origin, which the allowlist below rejects with 403. The endpoint is
-// healthy; the browser simply can't read the response, and CARE reports the
-// gateway as unreachable.
-//
-// These two routes are public by design: a JWKS endpoint exists precisely to
-// be fetched by anyone verifying our signature, and /health/status returns
-// only booleans. Neither reads a cookie nor returns anything sensitive, so
-// they get an open CORS policy of their own instead of widening the global
-// allowlist (which is credentialed and must stay closed).
-const CARE_PUBLIC_PATHS = new Set(['/openid-configuration', '/health/status']);
-const isCarePublicPath = (req) =>
-  CARE_PUBLIC_PATHS.has(req.path.replace(/\/+$/, '') || '/');
-
-// The CARE bridge is called by a browser extension, whose Origin is
-// chrome-extension://<id> — an id that changes between an unpacked build and a
-// published one, so it cannot usefully be allowlisted. The API key is what
-// actually authorises this endpoint (requireApiKey, failing closed), and it is
-// never cookie-authenticated, so opening CORS here grants nothing: a page
-// without the key gets 401, and anyone holding the key does not need a browser.
-const isCareBridgePath = (req) => req.path.startsWith('/api/care-bridge');
-
-const isOpenCorsPath = (req) => isCarePublicPath(req) || isCareBridgePath(req);
-
-app.use((req, res, next) => {
-  if (!isOpenCorsPath(req)) return next();
-  // No Allow-Credentials: '*' and credentials are mutually exclusive, and
-  // these endpoints authenticate by key or not at all — never by cookie.
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-});
-
 const corsMiddleware = cors({
   origin: (origin, callback) => {
     // No Origin header = server-to-server/curl/mobile clients — not subject to
@@ -203,11 +181,7 @@ const corsMiddleware = cors({
   exposedHeaders: ['X-CSRF-Token']
 });
 
-// Skip the credentialed allowlist for the two public CARE endpoints — they
-// were already answered above. Without this they would still reach cors() and
-// be rejected, defeating the handler.
-app.use((req, res, next) =>
-  isOpenCorsPath(req) ? next() : corsMiddleware(req, res, next));
+app.use(corsMiddleware);
 
 // VAPT #20 (Access Control Allowed Origin Header Not Implemented): the cors
 // middleware above only emits Access-Control-Allow-Origin when the request
@@ -233,16 +207,10 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 app.use((req, res, next) => {
   if (!MUTATING_METHODS.has(req.method)) return next();
 
-  // The CARE bridge is exempt. This guard defends against CSRF — a browser
-  // being tricked into sending a request that rides an ambient cookie the
-  // victim already holds. The bridge has no ambient credential to ride: it is
-  // authenticated solely by an X-API-Key header that a cross-site page cannot
-  // read or guess, and it never consults a cookie. The caller is a browser
-  // extension whose chrome-extension://<id> origin changes between unpacked
-  // and published builds, so it cannot be allowlisted; without this it fails
-  // the check below as "Request source not allowed" despite holding a valid
-  // key.
-  if (isCareBridgePath(req)) return next();
+  // Same reasoning for the WhatsApp Cloud API webhook: Meta's servers send
+  // neither Origin nor Referer, and the request is authenticated by its
+  // X-Hub-Signature-256 HMAC (checked in reportDeliveryController), never a cookie.
+  if (req.path === '/api/whatsapp/webhook' || req.path === '/api/payments/razorpay/webhook') return next();
 
   const source = req.headers.origin || req.headers.referer;
   if (!source) {
@@ -290,9 +258,21 @@ app.use((req, res, next) => {
   return res.status(403).json({ success: false, message: 'Request source not allowed' });
 });
 
-app.use(express.json({ limit: '50mb' }));
+// The raw bytes are kept only for the WhatsApp webhook, whose HMAC signature
+// is computed over the body exactly as sent.
+app.use(express.json({
+  limit: '50mb',
+  verify: (req, _res, buf) => {
+    captureBodyDigest(req, _res, buf);
+    if (req.originalUrl.startsWith('/api/whatsapp/webhook') || req.originalUrl.startsWith('/api/payments/razorpay/webhook')) req.rawBody = buf;
+  },
+}));
+// Reject agent requests whose body no longer matches its checksum (tender #111).
+app.use(verifyBodyIntegrity);
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(apiLogger);
+// System-wide, hash-chained audit trail of every state-changing call.
+app.use(auditTrail);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -300,11 +280,13 @@ app.use('/api/dev', developerRoutes);
 app.use('/api/patients', patientRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/imaging', imagingRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/infra', infraRoutes);
 app.use('/api/duty', dutyRoutes);
 app.use('/api/billing-packages', billingPackageRoutes);
 app.use('/api/free-schemes', freeSchemeRoutes);
+app.use('/api/queue', queueRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/lab', labRoutes);
 app.use('/api/dashboard', dashboardRoutes);
@@ -316,25 +298,40 @@ app.use('/api/v2/inventory/transactions', inventoryTransactionRoutes);
 app.use('/api/v2/inventory/mappings', inventoryMappingRoutes);
 app.use('/api/v2/inventory/analytics', inventoryAnalyticsRoutes);
 app.use('/api/v2/inventory/suggestions', inventorySuggestionRoutes);
-app.use('/api/v2/inventory/transfers', inventoryTransferRoutes);
 app.use('/api/v2/inventory/ap', inventoryAccountsPayableRoutes);
 app.use('/api/v2/inventory/procurement', inventoryProcurementRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/org', orgRoutes);
+// The hospital's inventory dashboard and overall stock (single facility).
 app.use('/api/inventory-network', inventoryNetworkRoutes);
 app.use('/api/hl7', hl7Routes);
-app.use('/api/disaster', disasterRoutes);
 app.use('/api/barcodes', barcodeRoutes);
 app.use('/api/public/upload', publicUploadRoutes);
 app.use('/api/dev-keys', deviceKeyRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/consultations', consultationRoutes);
-app.use('/', careRoutes);
-app.use('/api/care', careAdminRoutes);
-// Browser-extension bridge: scraped CARE orders -> bills (X-API-Key auth).
-app.use('/api/care-bridge', careBridgeRoutes);
-app.use('/api/cdac', cdacRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/privilege-review', privilegeReviewRoutes);
+app.use('/api/quality', qualityRoutes);
+app.use('/api/fhir', fhirRoutes);
+app.use('/api/blood-bank', bloodBankRoutes);
+app.use('/api/poct', poctRoutes);
+app.use('/api/clinician-portal', clinicianPortalRoutes);
+app.use('/api/clinicians', clinicianAdminRouter);
+app.use('/api/equipment', equipmentRoutes);
+app.use('/api/report-delivery', reportDeliveryRoutes);
+app.use('/api/whatsapp', whatsappWebhookRouter);
+app.use('/api/export', dataExportRoutes(app));
+app.use('/api/payments', paymentRoutes);
+app.use('/api/test-prices', testPriceRouter);
+app.use('/api/payment-settings', paymentSettingsRouter);
+// HMIS: HR and OPD
+app.use('/api/employees', employeeRoutes);
+app.use('/api/roster', rosterRoutes);
+app.use('/api/leave', leaveRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/payroll', payrollRoutes);
 // Health check route
 app.get('/', (req, res) => {
   res.send('HIMS Backend is running!');
@@ -367,6 +364,9 @@ app.use((err, req, res, next) => {
 // Start server - bind to 0.0.0.0 to accept external connections
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
+  if (process.env.QUICK_ACCESS === 'true') {
+    console.warn('⚠️  QUICK_ACCESS is on: anyone who can open this site can start a session without a password. Turn it off before real use.');
+  }
   console.log(`Accessible via your IP address on port ${PORT}`);
 
   // Test DB connection on startup

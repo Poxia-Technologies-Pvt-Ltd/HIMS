@@ -13,6 +13,7 @@ import {
   RotateCcw,
   FileText
 } from 'lucide-react';
+import OnlinePayment from '../../components/OnlinePayment';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 const tok = () => localStorage.getItem('hims_token');
@@ -38,6 +39,7 @@ function BillingOverview() {
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('Cash');
   const [paying, setPaying] = useState(false);
+  const [ledger, setLedger] = useState(null); // { receipts, attempts } for the open bill
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, type = 'success') => {
@@ -91,6 +93,8 @@ function BillingOverview() {
       const res = await fetch(`${API_BASE}/api/billing/${bill.id}`, { headers: { Authorization: `Bearer ${tok()}` } });
       const data = await res.json();
       if (data.success) setBillDetail(data.data);
+      const pay = await fetch(`${API_BASE}/api/payments/bills/${bill.id}`, { headers: { Authorization: `Bearer ${tok()}` } }).then((r) => r.json());
+      setLedger(pay.success ? pay : null);
     } catch { /* silent */ }
     setDetailLoading(false);
   };
@@ -101,6 +105,15 @@ function BillingOverview() {
     setPayModal(false);
     setPayAmount('');
     setPayMethod('Cash');
+    setLedger(null);
+  };
+
+  // An online payment confirmed by the server: refresh the list and the bill.
+  const onlinePaid = async (d) => {
+    showToast(d.message || 'Payment received');
+    setPayModal(false);
+    await fetchBills();
+    await openBill({ ...selectedBill, id: selectedBill.id });
   };
 
   const submitPayment = async () => {
@@ -519,6 +532,38 @@ function BillingOverview() {
                   </div>
                 )}
 
+                {ledger && (ledger.receipts.length > 0 || ledger.attempts.length > 0) && (
+                  <div style={{ marginBottom: 24 }}>
+                    <h4 style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Payments</h4>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                      {ledger.receipts.map((p) => (
+                        <div key={`r${p.id}`} style={{ padding: '10px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff' }}>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>{p.receipt_no} · {p.method}{p.channel !== 'Counter' ? ` (${p.channel})` : ''}</div>
+                            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{new Date(p.created_at).toLocaleString('en-IN')}{p.reference ? ` · Ref ${p.reference}` : ''}{p.received_by_name ? ` · ${p.received_by_name}` : ''}</div>
+                          </div>
+                          <div style={{ fontWeight: 700, color: '#15803d', fontSize: 14 }}>{fmt(p.amount)}</div>
+                        </div>
+                      ))}
+                      {ledger.attempts.filter((a) => a.status !== 'Paid').map((a) => (
+                        <div key={`a${a.id}`} style={{ padding: '10px 16px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: '#475569' }}>Razorpay {a.kind.toLowerCase()} · {a.status}</div>
+                            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{new Date(a.created_at).toLocaleString('en-IN')}{a.error ? ` · ${a.error}` : ''}</div>
+                          </div>
+                          {a.status === 'Created'
+                            ? <button onClick={async () => {
+                                const d = await fetch(`${API_BASE}/api/payments/transactions/${a.id}/check`, { method: 'POST', headers: { Authorization: `Bearer ${tok()}` } }).then((r) => r.json());
+                                showToast(d.message || 'Checked', d.success ? 'success' : 'error');
+                                if (d.status === 'Paid') onlinePaid(d); else openBill({ ...selectedBill, id: selectedBill.id });
+                              }} style={{ padding: '6px 10px', background: '#fff', border: '1.5px solid #cbd5e1', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#334155' }}>Check status</button>
+                            : <span style={{ fontSize: 13, color: '#94a3b8' }}>{fmt(a.amount)}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Action Buttons Row */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
                   <button
@@ -560,10 +605,25 @@ function BillingOverview() {
             {/* Payment Modal inside Panel */}
             {payModal && (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setPayModal(false)}>
-                <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
+                <div style={{ background: '#fff', borderRadius: 20, padding: 28, width: '100%', maxWidth: payMethod === 'Online' ? 480 : 380, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }} onClick={e => e.stopPropagation()}>
                   <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 800 }}>Process Payment</h3>
                   <p style={{ color: '#64748b', fontSize: 13, margin: '0 0 24px' }}>{selectedBill?.bill_number} • Balance: {fmt(parseFloat(billDetail?.net_amount || 0) - parseFloat(billDetail?.paid_amount || 0))}</p>
 
+                  <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Payment Method</label>
+                  <select value={payMethod} onChange={e => setPayMethod(e.target.value)}
+                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14, marginBottom: 16, boxSizing: 'border-box' }}>
+                    {['Cash', 'Card', 'UPI', 'Insurance', 'Other'].map(m => <option key={m}>{m}</option>)}
+                    <option value="Online">Online — Razorpay (UPI / card / link)</option>
+                  </select>
+
+                  {payMethod === 'Online' ? (
+                    <OnlinePayment
+                      billId={selectedBill.id}
+                      balance={Math.max(0, parseFloat(billDetail?.net_amount || 0) - parseFloat(billDetail?.paid_amount || 0))}
+                      onPaid={onlinePaid}
+                      onCancel={() => setPayModal(false)}
+                    />
+                  ) : (<>
                   <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Amount (₹)</label>
                   <input
                     type="number" min="1" value={payAmount}
@@ -572,12 +632,6 @@ function BillingOverview() {
                     placeholder="Enter amount"
                   />
 
-                  <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Payment Method</label>
-                  <select value={payMethod} onChange={e => setPayMethod(e.target.value)}
-                    style={{ width: '100%', padding: '11px 14px', border: '1.5px solid #e2e8f0', borderRadius: 10, fontSize: 14, marginBottom: 24, boxSizing: 'border-box' }}>
-                    {['Cash', 'Card', 'UPI', 'Insurance', 'Other'].map(m => <option key={m}>{m}</option>)}
-                  </select>
-
                   <div style={{ display: 'flex', gap: 12 }}>
                     <button onClick={() => setPayModal(false)} style={{ flex: 1, padding: '11px', background: '#f1f5f9', border: 'none', borderRadius: 10, fontWeight: 600, cursor: 'pointer', color: '#475569' }}>Cancel</button>
                     <button onClick={submitPayment} disabled={paying}
@@ -585,6 +639,7 @@ function BillingOverview() {
                       {paying ? 'Processing…' : 'Confirm Payment'}
                     </button>
                   </div>
+                  </>)}
                 </div>
               </div>
             )}

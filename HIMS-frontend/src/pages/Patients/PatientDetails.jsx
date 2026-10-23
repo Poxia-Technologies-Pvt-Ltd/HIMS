@@ -15,7 +15,9 @@ const GENDERS = ['Male', 'Female', 'Other'];
 const PATIENT_TYPES = ['OP', 'IP', 'Emergency'];
 const MARITAL = ['Single', 'Married', 'Divorced', 'Widowed'];
 const OCCS = ['Employed', 'Unemployed', 'Student', 'Retired', 'Self-employed'];
-const LANGS = ['English', 'French', 'Spanish', 'Hindi', 'Other'];
+const LANGS = ['Kannada', 'English', 'Hindi', 'Tamil', 'Telugu', 'Marathi', 'Urdu', 'Other'];
+// Consent to receive reports on WhatsApp / e-mail (tender #44).
+const REPORT_CONSENT = ['Agreed', 'Declined'];
 const EDUS = ['Primary', 'High School', "Bachelor's", "Master's", 'PhD', 'Other'];
 const RELS = ['Christian', 'Muslim', 'Hindu', 'Buddhist', 'None', 'Other'];
 const CITIZENS = ['Ghana', 'Nigeria', 'US', 'UK', 'Canada', 'India', 'Other'];
@@ -31,7 +33,7 @@ const INIT = {
   title: '', firstName: '', middleName: '', lastName: '',
   dob: '', ageYears: '', ageMonths: '', ageDays: '',
   gender: '', aadharNumber: '', abhaId: '', maritalStatus: '', occupation: '', language: '',
-  educationLevel: '', religion: '', citizen: '', emailId: '', telephone: '', fileRequired: false,
+  educationLevel: '', religion: '', citizen: '', emailId: '', telephone: '', reportConsent: '', fileRequired: false,
   address: '', suburb: '', city: '', country: '', postalCode: '', postalAddress: false,
   kinSameAddress: false, kinName: '', kinRelation: '', kinTelephone: '',
   kinAddress: '', kinSuburb: '', kinCity: '', kinCountry: '', kinCode: '',
@@ -657,6 +659,10 @@ function PatientDetails({ onSaveSuccess }) {
                     <Input type="tel" name="telephone" value={data.telephone} onChange={ch} onBlur={onPhoneBlur} placeholder="12345 67890" />
                   </div>
                 </div>
+              </Field>
+
+              <Field label="Digital report delivery">
+                <Select options={REPORT_CONSENT} placeholder="Not asked" name="reportConsent" value={data.reportConsent} onChange={ch} />
               </Field>
 
               <Field label="Patient Type*">

@@ -31,6 +31,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on('local-results-updated', listener);
     return () => ipcRenderer.removeListener('local-results-updated', listener);
   },
+  // Offline registration / sample collection queue.
+  offline: {
+    getState: () => ipcRenderer.invoke('offline-get-state'),
+    syncNow: () => ipcRenderer.invoke('offline-sync-now'),
+    fieldConfig: () => ipcRenderer.invoke('offline-field-config'),
+    registerPatient: (form) => ipcRenderer.invoke('offline-register-patient', form),
+    listRegistrations: () => ipcRenderer.invoke('offline-list-registrations'),
+    resolveRegistration: (payload) => ipcRenderer.invoke('offline-resolve-registration', payload),
+    listOrders: (opts) => ipcRenderer.invoke('offline-list-orders', opts),
+    getOrder: (billId) => ipcRenderer.invoke('offline-get-order', billId),
+    collectOrder: (billId) => ipcRenderer.invoke('offline-collect-order', billId),
+    refreshOrders: () => ipcRenderer.invoke('offline-refresh-orders'),
+    listCollections: () => ipcRenderer.invoke('offline-list-collections'),
+    resolveCollection: (payload) => ipcRenderer.invoke('offline-resolve-collection', payload),
+    onUpdated: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on('offline-sync-updated', listener);
+      return () => ipcRenderer.removeListener('offline-sync-updated', listener);
+    },
+  },
   listPorts: () => ipcRenderer.invoke('list-ports'),
   saveConfig: (config) => ipcRenderer.invoke('save-config', config),
   getConfig: () => ipcRenderer.invoke('get-config'),

@@ -1,0 +1,71 @@
+name: Build & Release Poxia DSC Agent
+
+# Builds the Poxia DSC Agent Windows installer (Poxia-DSC-Agent-Setup-<version>.exe).
+# Triggered by pushing a tag that starts with "dsc-v", e.g.:
+#   git tag dsc-v0.1.0 && git push origin dsc-v0.1.0
+# (the LIS Agent and TV Kiosk keep using plain "v*" tags, so the three never collide.)
+# It has to run on windows-latest: pkcs11js, the PKCS#11 module that talks to the
+# doctor's USB token, is a native addon that node-gyp must compile on Windows —
+# it cannot be cross-compiled from macOS/Linux. The installer is also kept as a
+# downloadable artifact of the run, so it can be fetched even without the deploy step.
+on:
+  push:
+    tags:
+      - 'dsc-v*'
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: Poxia-DSC-Agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies (compiles pkcs11js for Electron)
+        run: npm ci
+
+      - name: Check the signing protocol
+        run: |
+          # The protocol test uses the backend's signing code.
+          cd ../HIMS-backend && npm ci && cd ../Poxia-DSC-Agent
+          $env:NODE_PATH = "..\HIMS-backend\node_modules"
+          npm test
+
+      - name: Build Windows installer
+        run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: poxia-dsc-agent-installer
+          path: |
+            Poxia-DSC-Agent/release/*.exe
+            Poxia-DSC-Agent/release/*.blockmap
+          if-no-files-found: error
+
+  deploy:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: poxia-dsc-agent-installer
+          path: dist-out
+
+      - name: Upload to ka-lims.poxiatechnologies.com/download/
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: 'dist-out/*'
+          target: ${{ vars.DEPLOY_PATH }}
+          strip_components: 1

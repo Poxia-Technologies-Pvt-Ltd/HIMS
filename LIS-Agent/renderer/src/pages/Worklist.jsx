@@ -3,8 +3,11 @@ import axios from 'axios';
 import JsBarcode from 'jsbarcode';
 import {
   FlaskConical, Printer, Clock, Activity, Hourglass, RotateCcw,
-  RefreshCw, Search, X, Download, Loader2, Inbox, Play, Eye, Satellite, Radio
+  RefreshCw, Search, X, Download, Loader2, Inbox, Play, Eye, Satellite, Radio, Timer, Flame, Keyboard
 } from 'lucide-react';
+import ManualEntryModal from '../components/ManualEntryModal';
+import { useManualReasons, ReasonPicker, reasonComplete } from '../components/ManualReason';
+import '../assets/CSS/Worklist.css';
 import { API_BASE } from '../apiBase';
 
 // ─── Inline barcode for table rows ────────────────────────────────────────────
@@ -121,12 +124,22 @@ const BarcodeModal = ({ printLabel, onClose }) => {
 };
 
 // ─── Main Worklist Component ───────────────────────────────────────────────────
+const fmtMins = (m) => (m == null ? '—' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`);
+const STEP_LABELS = ['Ordered', 'Collected', 'Received', 'Processing', 'Resulted'];
+const NO_EXTRA = { priority: '', analyzer: '', test_id: '', min_age: '', tat: '' };
+
 const Worklist = () => {
   const [worklist, setWorklist] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedBranch, setSelectedBranch] = useState(localStorage.getItem('branch_id') || '1');
   const [printLabel, setPrintLabel] = useState(null);
+  // Results typed by hand (tender #33): the test being typed, and the reason
+  // required when a captured value is changed by hand.
+  const [manualItem, setManualItem] = useState(null);
+  const manualReasons = useManualReasons();
+  const [editCode, setEditCode] = useState('');
+  const [editNote, setEditNote] = useState('');
   const [machines, setMachines] = useState([]);
   const [showAnalyzerPicker, setShowAnalyzerPicker] = useState(false);
   const [showProcessModal, setShowProcessModal] = useState(false);
@@ -141,13 +154,33 @@ const Worklist = () => {
   const lastCdacPullAttemptRef = useRef('');
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  // Set when the list on screen is the copy saved at the last successful refresh (no network).
+  const [offlineCopy, setOfflineCopy] = useState(null);
+  const [extra, setExtra] = useState(NO_EXTRA);
+  const [summary, setSummary] = useState(null);
+  const [labAnalyzers, setLabAnalyzers] = useState([]);
+  const [knownTests, setKnownTests] = useState({});
+  const versionRef = useRef(null);
 
   useEffect(() => {
     fetchWorklist();
     fetchMachines();
-    const interval = setInterval(fetchWorklist, 30000);
-    return () => clearInterval(interval);
-  }, [search, selectedBranch, statusFilter, departmentFilter]);
+  }, [search, selectedBranch, statusFilter, departmentFilter, extra]);
+
+  // Near-real-time: the server bumps a per-facility counter whenever a sample
+  // is received, run or resulted, or an order/transfer arrives. Checking it is
+  // cheap, so poll every 5 s and reload only when it moves; a slower full
+  // reload keeps ages and TAT fresh.
+  useEffect(() => {
+    const check = setInterval(async () => {
+      try {
+        const r = await axios.get(`${API_BASE}/api/lab/worklist/version`, { params: { branch_id: selectedBranch } });
+        if (r.data?.success && versionRef.current && r.data.version !== versionRef.current) fetchWorklist(true);
+      } catch { /* next tick */ }
+    }, 5000);
+    const full = setInterval(() => fetchWorklist(true), 60000);
+    return () => { clearInterval(check); clearInterval(full); };
+  }, [search, selectedBranch, statusFilter, departmentFilter, extra]);
 
   useEffect(() => {
     const cleanupTest = window.electronAPI.onTestCompleted((data) => {
@@ -187,8 +220,8 @@ const Worklist = () => {
     };
   }, []);
 
-  const fetchWorklist = async () => {
-    setRefreshing(true);
+  const fetchWorklist = async (silent = false) => {
+    if (!silent) setRefreshing(true);
     try {
       const res = await axios.get(`${API_BASE}/api/lab/worklist`, {
         params: {
@@ -196,14 +229,43 @@ const Worklist = () => {
           branch_id: selectedBranch,
           role_level: 'Branch',
           search: search,
-          status: statusFilter !== 'all' ? statusFilter : undefined
+          status: statusFilter !== 'all' ? statusFilter : undefined,
+          priority: extra.priority || undefined,
+          analyzer: extra.analyzer || undefined,
+          test_id: extra.test_id || undefined,
+          min_age: extra.min_age || undefined,
+          tat: extra.tat || undefined,
         }
       });
       if (res.data.success) {
         setWorklist(res.data.worklist || []);
+        setSummary(res.data.summary || null);
+        setLabAnalyzers(res.data.analyzers || []);
+        versionRef.current = res.data.version;
+        setKnownTests((prev) => {
+          const next = { ...prev };
+          (res.data.worklist || []).forEach((w) => { next[w.test_id] = w.test_name; });
+          return next;
+        });
         setLastUpdated(new Date());
+        setOfflineCopy(null);
+        // Keep the unfiltered list so the worklist can still be read during an outage.
+        if (!search && statusFilter === 'all' && departmentFilter === 'all') {
+          try { localStorage.setItem(`worklist_saved_${selectedBranch}`, JSON.stringify({ at: new Date().toISOString(), worklist: res.data.worklist || [], summary: res.data.summary || null })); } catch { /* storage full or blocked */ }
+        }
       }
-    } catch (err) { console.error("Error fetching worklist:", err); }
+    } catch (err) {
+      console.error("Error fetching worklist:", err);
+      try {
+        const saved = JSON.parse(localStorage.getItem(`worklist_saved_${selectedBranch}`) || 'null');
+        if (saved?.worklist) {
+          const q = search.trim().toLowerCase();
+          setWorklist(q ? saved.worklist.filter((w) => JSON.stringify(w).toLowerCase().includes(q)) : saved.worklist);
+          setSummary(saved.summary || null);
+          setOfflineCopy(saved.at);
+        }
+      } catch { /* no saved copy */ }
+    }
     finally { setLoading(false); setRefreshing(false); }
   };
 
@@ -328,6 +390,7 @@ const Worklist = () => {
   };
 
   const handleCloseProcess = async () => {
+    setEditCode(''); setEditNote('');
     await window.electronAPI.stopListening();
     setShowProcessModal(false);
     setActiveItem(null);
@@ -339,6 +402,8 @@ const Worklist = () => {
 
   const handleSaveEdits = async () => {
     if (!activeItem || incomingResults.length === 0) return;
+    // Changing a captured value by hand needs a reason (recorded in the audit trail).
+    if (!reasonComplete(manualReasons, editCode, editNote)) return alert('Choose a reason for changing the captured value.');
     try {
       const payload = {
         sample_id: activeItem.sample_id,
@@ -346,6 +411,9 @@ const Worklist = () => {
         bill_item_id: activeItem.bill_item_id,
         test_id: activeItem.test_id,
         test_name: activeItem.test_name,
+        entry_mode: 'edited',
+        manual_reason_code: editCode,
+        manual_reason: editNote.trim(),
         results: incomingResults.map(r => ({
           parameter_name: r.parameter_name || r.test_name || r.parameter,
           result_value: r.result_value || r.value,
@@ -362,7 +430,7 @@ const Worklist = () => {
       }
     } catch (err) {
       console.error("Error saving edited results:", err);
-      alert("Failed to save edited results.");
+      alert(err.response?.data?.message || "Failed to save edited results.");
     }
   };
 
@@ -415,6 +483,12 @@ const Worklist = () => {
     { key: 'Partially Done', label: 'Partially Done', Icon: Hourglass, color: '#c2410c', bg: 'var(--color-warning-bg)' },
     { key: 'Rerun Requested', label: 'Rerun Requested', Icon: RotateCcw, color: '#b45309', bg: '#fffbeb' },
   ];
+  const TAT_CARDS = summary ? [
+    { label: 'TAT breached', value: summary.breached, Icon: Timer, color: '#b91c1c', bg: 'var(--color-danger-bg)', apply: { ...NO_EXTRA, tat: 'breached' } },
+    { label: 'At risk', value: summary.at_risk, Icon: Timer, color: '#b45309', bg: 'var(--color-warning-bg)', apply: { ...NO_EXTRA, tat: 'at_risk' } },
+    { label: 'STAT', value: summary.stat, Icon: Flame, color: '#b91c1c', bg: 'var(--color-danger-bg)', apply: { ...NO_EXTRA, priority: 'STAT' } },
+  ] : [];
+  const extraCount = Object.values(extra).filter(Boolean).length;
 
   return (
     <div className="page" style={{ maxWidth: 1400 }}>
@@ -425,6 +499,11 @@ const Worklist = () => {
           <p className="page-subtitle">Smart Diagnostic Command Center</p>
         </div>
         <div className="flex-row gap-12">
+          {offlineCopy && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '4px 10px', borderRadius: 8 }}>
+              Offline — showing the list saved at {new Date(offlineCopy).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Results from analyzers are still being captured.
+            </span>
+          )}
           {lastUpdated && (
             <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 600 }}>
               {refreshing ? 'Refreshing…' : `Updated ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
@@ -447,6 +526,16 @@ const Worklist = () => {
               <span className="stat-label">{card.label}</span>
             </div>
           </div>
+        ))}
+        {TAT_CARDS.map(card => (
+          <button key={card.label} className="stat-card wl-card-btn" onClick={() => setExtra(card.apply)}
+            style={{ '--stat-icon-bg': card.bg, '--stat-icon-color': card.color, padding: '14px 18px' }}>
+            <div className="stat-icon" style={{ width: 38, height: 38 }}><card.Icon size={18} /></div>
+            <div className="stat-body">
+              <span className="stat-value" style={{ fontSize: 20 }}>{card.value}</span>
+              <span className="stat-label">{card.label}</span>
+            </div>
+          </button>
         ))}
       </div>
 
@@ -482,8 +571,26 @@ const Worklist = () => {
             <option value="Microbiology">Microbiology</option>
           </select>
 
-          {(search || statusFilter !== 'all' || departmentFilter !== 'all') && (
-            <button onClick={() => { setSearch(''); setStatusFilter('all'); setDepartmentFilter('all'); }} className="btn btn-ghost btn-sm" style={{ color: 'var(--brand-blue)' }}>
+          <select value={extra.priority} onChange={(e) => setExtra({ ...extra, priority: e.target.value })} className="control worklist-select">
+            <option value="">All Priority</option><option>STAT</option><option>Urgent</option><option>Routine</option>
+          </select>
+          <select value={extra.analyzer} onChange={(e) => setExtra({ ...extra, analyzer: e.target.value })} className="control worklist-select">
+            <option value="">All Analyzers</option>
+            {labAnalyzers.map((a) => <option key={a.name} value={a.name}>{a.name} ({a.model})</option>)}
+          </select>
+          <select value={extra.test_id} onChange={(e) => setExtra({ ...extra, test_id: e.target.value })} className="control worklist-select">
+            <option value="">All Tests</option>
+            {Object.entries(knownTests).sort((x, y) => x[1].localeCompare(y[1])).map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+          </select>
+          <select value={extra.min_age} onChange={(e) => setExtra({ ...extra, min_age: e.target.value })} className="control worklist-select">
+            <option value="">Any Age</option><option value="1">Waiting &gt; 1 hour</option><option value="4">Waiting &gt; 4 hours</option><option value="12">Waiting &gt; 12 hours</option><option value="24">Waiting &gt; 1 day</option>
+          </select>
+          <select value={extra.tat} onChange={(e) => setExtra({ ...extra, tat: e.target.value })} className="control worklist-select">
+            <option value="">All Turnaround</option><option value="at_risk">At risk or breached</option><option value="breached">Breached only</option>
+          </select>
+
+          {(search || statusFilter !== 'all' || departmentFilter !== 'all' || extraCount > 0) && (
+            <button onClick={() => { setSearch(''); setStatusFilter('all'); setDepartmentFilter('all'); setExtra(NO_EXTRA); }} className="btn btn-ghost btn-sm" style={{ color: 'var(--brand-blue)' }}>
               Clear filters
             </button>
           )}
@@ -528,24 +635,27 @@ const Worklist = () => {
               <th>Patient</th>
               <th>Test Name</th>
               <th>Status</th>
+              <th>Progress</th>
+              <th>Analyzer</th>
+              <th>TAT</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6}>
+              <tr><td colSpan={9}>
                 <div className="loading-row" style={{ flexDirection: 'column' }}>
                   <Loader2 size={28} style={{ animation: 'spin 0.8s linear infinite' }} />
                   <div>Loading worklist…</div>
                 </div>
               </td></tr>
             ) : activeWorklist.length === 0 ? (
-              <tr><td colSpan={6}>
+              <tr><td colSpan={9}>
                 <div className="empty-state">
                   <div className="empty-state-icon"><Inbox size={26} /></div>
                   <div style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>No matching items</div>
                   <div style={{ fontSize: 13 }}>
-                    {search || statusFilter !== 'all' || departmentFilter !== 'all'
+                    {search || statusFilter !== 'all' || departmentFilter !== 'all' || extraCount > 0
                       ? 'Try adjusting your search or filters.'
                       : 'The worklist is empty right now.'}
                   </div>
@@ -584,8 +694,12 @@ const Worklist = () => {
                     )}
                   </td>
                   <td>
-                    <div style={{ fontWeight: 700 }}>{item.patient_name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{item.patient_reg_no}</div>
+                    <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {item.patient_name}
+                      {item.priority === 'STAT' && <span className="badge badge-danger">STAT</span>}
+                      {item.priority === 'Urgent' && <span className="badge badge-warning">Urgent</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{item.reg_no || item.patient_reg_no}</div>
                   </td>
                   <td>
                     <div style={{ fontWeight: 600 }}>{item.test_name}</div>
@@ -597,6 +711,13 @@ const Worklist = () => {
                         <span className="badge-dot" />
                         {displayStatus(item)}
                       </span>
+                      {(item.has_critical || item.has_invalid || item.has_delta) ? (
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {!!item.has_critical && <span className="badge badge-danger">Critical</span>}
+                          {!!item.has_invalid && <span className="badge badge-neutral">Invalid</span>}
+                          {!!item.has_delta && <span className="badge badge-info">Delta</span>}
+                        </div>
+                      ) : null}
                       {item.pending_params && item.pending_params.length > 0 && (
                         <div style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 600, maxWidth: 120, display: 'flex', alignItems: 'flex-start', gap: 3 }}>
                           <Hourglass size={10} style={{ marginTop: 1, flexShrink: 0 }} /> Waiting: {item.pending_params.join(', ')}
@@ -610,6 +731,34 @@ const Worklist = () => {
                     </div>
                   </td>
                   <td>
+                    <div className="wl-steps">{[1, 2, 3, 4, 5].map((n) => <i key={n} className={n <= item.progress_step ? 'on' : ''} />)}</div>
+                    <div className="wl-step-label">
+                      {STEP_LABELS[item.progress_step - 1]}{item.parameters_total > 0 && ` · ${item.parameters_received}/${item.parameters_total}`}
+                    </div>
+                    {item.referred_from && <div className="wl-step-label">From {item.referred_from}</div>}
+                    {item.recollection_status === 'Recollection Pending' && <div className="wl-step-label bad">Recollect: {item.recollection_reason}</div>}
+                  </td>
+                  <td>
+                    {item.analyzer
+                      ? <div className="wl-analyzer"><span className="wl-dot on" />{item.analyzer}</div>
+                      : <div className="wl-analyzer"><span className={`wl-dot ${item.analyzer_status === 'Online' ? 'on' : item.analyzer_status === 'Offline' ? 'off' : ''}`} />
+                          {item.analyzer_status === 'Not mapped' ? 'None set up' : `${item.analyzers_online}/${item.analyzers_total} online`}</div>}
+                    {item.reagent_warnings?.some((r) => r.state === 'Expired') && (
+                      <div className="wl-step-label bad" title={item.reagent_warnings.filter((r) => r.state === 'Expired').map((r) => `${r.analyzer}: ${r.reagent} lot ${r.lot} expired`).join('\n')}>Reagent expired</div>
+                    )}
+                    {item.maintenance_overdue?.length > 0 && (
+                      <div className="wl-step-label bad" title={item.maintenance_overdue.map((m) => `${m.analyzer}: ${m.task} (${m.days_overdue}d overdue)`).join('\n')}>Maintenance overdue</div>
+                    )}
+                    {item.current_lab_name && <div className="wl-step-label">{item.current_lab_name}</div>}
+                  </td>
+                  <td>
+                    <span className={`wl-tat wl-tat-${item.tat_status.toLowerCase().replace(' ', '-')}`}>{item.tat_status}</span>
+                    <div className="wl-step-label">
+                      {item.is_open ? `${fmtMins(item.age_minutes)} of ${fmtMins(item.tat_minutes)}` : `Took ${fmtMins(item.turnaround_minutes)}`}
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {item.status === 'Pending' ? (
                       <button onClick={() => handleAcknowledge(item)} className="btn btn-primary btn-sm">Acknowledge</button>
                     ) : item.status === 'Collected' ? (
@@ -619,6 +768,10 @@ const Worklist = () => {
                     ) : (
                       <button onClick={() => handleViewProcess(item)} className="btn btn-sm" style={{ background: 'var(--text-primary)', color: '#fff' }}><Eye size={14} /> View</button>
                     )}
+                    {['Collected', 'In Progress', 'Rerun Requested'].includes(item.status) && (
+                      <button onClick={() => setManualItem(item)} className="btn btn-sm btn-secondary" title="Type the result in by hand (a reason is required)"><Keyboard size={14} /> Type result</button>
+                    )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -693,9 +846,14 @@ const Worklist = () => {
                     ))
                   )}
                 </div>
+                {hasUnsavedChanges && (
+                  <div style={{ marginTop: 16 }}>
+                    <ReasonPicker dark reasons={manualReasons} code={editCode} note={editNote} onCode={setEditCode} onNote={setEditNote} />
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
                   {hasUnsavedChanges && (
-                    <button onClick={handleSaveEdits} className="btn" style={{ flex: 1, padding: 15, background: 'var(--color-success)', color: '#fff' }}>
+                    <button onClick={handleSaveEdits} disabled={!reasonComplete(manualReasons, editCode, editNote)} className="btn" style={{ flex: 1, padding: 15, background: 'var(--color-success)', color: '#fff', opacity: reasonComplete(manualReasons, editCode, editNote) ? 1 : 0.5 }}>
                       Save Edits
                     </button>
                   )}
@@ -707,6 +865,10 @@ const Worklist = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {manualItem && (
+        <ManualEntryModal item={manualItem} onClose={() => setManualItem(null)} onSaved={() => fetchWorklist()} />
       )}
 
       {/* ── Barcode Popup Modal (self-contained, owns its own ref) ── */}

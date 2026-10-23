@@ -7,6 +7,7 @@
 // Unmapped Test pages regardless of whether the push has succeeded yet.
 const axios = require('./apiClient');
 const db = require('../db/sqlite.js');
+const { validateResultRows } = require('./frameValidator');
 
 // A getter, not a captured window reference — the window is recreated when
 // restored from the tray (see main.js's initAutoUpdate for the same
@@ -23,7 +24,30 @@ function notify() {
 // session couldn't be tied to a real sample (no/garbled Patient ID) — an
 // unmapped row is stored and shown for a technician to resolve by hand; it
 // is never auto-pushed, since there is nothing valid to push yet.
+// A message that failed its protocol checks, or held nothing usable, is kept with the reason
+// instead of becoming a result. The same fault repeating (line noise) is recorded once a minute.
+const lastRejected = new Map();
+async function recordRejected({ machine = {}, machine_no = null, machine_name = null, protocol, problems = [], raw = '' }) {
+  const no = machine_no || machine.unique_id || machine.id || null;
+  const reason = `${protocol}: ${problems.join('; ') || 'rejected'}`;
+  const key = `${no}|${reason}`;
+  if (Date.now() - (lastRejected.get(key) || 0) < 60_000) return null;
+  lastRejected.set(key, Date.now());
+  console.warn(`⛔ ${no || 'analyzer'} — message rejected (${reason})`);
+  const id = await db.insertLocalResult({
+    kind: 'rejected', test_name: `${protocol} message not accepted`, machine_no: no, machine_name: machine_name || machine.analyzer_name || machine.name || '',
+    results: [], push_status: 'rejected', last_error: reason, raw_message: typeof raw === 'string' ? raw : Buffer.from(raw).toString('latin1'),
+  });
+  notify();
+  return id;
+}
+
 async function enqueue({ kind = 'mapped', sample_id = null, bill_item_id = null, test_name = null, machine_no = null, machine_name = null, results = [] }) {
+  // Whatever the interface, a result with no parameter, no value or an invalid value is not committed.
+  const check = validateResultRows(results);
+  if (!check.ok) return recordRejected({ machine_no, machine_name, protocol: 'Result', problems: check.problems.length ? check.problems : ['no usable result'], raw: JSON.stringify(results) });
+  if (check.problems.length) console.warn(`⚠️  ${machine_no}: dropped invalid result(s): ${check.problems.join('; ')}`);
+  results = check.rows;
   const id = await db.insertLocalResult({ kind, sample_id, bill_item_id, test_name, machine_no, machine_name, results, push_status: 'pending' });
   notify();
   if (kind === 'mapped' && sample_id) {
@@ -76,4 +100,4 @@ async function retryAll() {
   return rows.length;
 }
 
-module.exports = { setWindow, enqueue, pushOne, retryAll };
+module.exports = { setWindow, enqueue, pushOne, retryAll, recordRejected };

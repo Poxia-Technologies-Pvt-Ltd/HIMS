@@ -276,3 +276,38 @@
   color: var(--blue-400);
   border-color: var(--sidebar-active-border);
 }
+/* ── Grouped navigation (Sidebar.jsx SECTIONS) ───────────────── */
+.nav-search {
+  display: flex; align-items: center; gap: 8px; margin: 10px 12px 2px; padding: 0 10px; height: 34px;
+  border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--sidebar-border); color: var(--sidebar-muted);
+}
+.nav-search input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--sidebar-white); font: inherit; font-size: 13px; }
+.nav-search input::placeholder { color: var(--sidebar-muted); }
+.nav-search button { border: 0; background: none; color: var(--sidebar-muted); cursor: pointer; padding: 0; display: grid; }
+.nav-search:focus-within { border-color: var(--sidebar-active-border); }
+.nav-empty { padding: 14px 10px; font-size: 12.5px; color: var(--sidebar-muted); }
+
+.nav-flat { display: flex; flex-direction: column; gap: 2px; }
+.nav-flat + .nav-section, .nav-section + .nav-section { margin-top: 2px; }
+
+.nav-section-head {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px 7px; margin-top: 6px;
+  border: 0; border-radius: 8px; background: transparent; cursor: pointer; font: inherit;
+  font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--sidebar-muted);
+}
+.nav-section-head span { flex: 1; text-align: left; }
+.nav-section-head em {
+  font-style: normal; font-size: 10.5px; font-weight: 700; letter-spacing: 0; padding: 0 6px; border-radius: 99px;
+  background: rgba(255, 255, 255, 0.06); color: var(--sidebar-muted);
+}
+.nav-section-head:hover { color: var(--sidebar-white); background: var(--sidebar-hover); }
+.nav-section.has-active .nav-section-head { color: var(--blue-400); }
+.nav-chevron { transition: transform .2s ease; transform: rotate(-90deg); }
+.nav-chevron.open { transform: rotate(0deg); }
+
+.nav-section-items { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 4px 10px; padding-left: 8px; border-left: 1px solid var(--sidebar-border); }
+.nav-leaf { padding: 7px 10px; font-size: 13px; }
+.nav-leaf .nav-icon { width: 18px; height: 18px; display: grid; place-items: center; flex-shrink: 0; }
+.nav-flat .nav-leaf { padding: 9px 10px; }
+.nav-section-rail { justify-content: center; }
+.sidebar.collapsed .nav-leaf, .sidebar.collapsed .nav-section-rail { justify-content: center; }

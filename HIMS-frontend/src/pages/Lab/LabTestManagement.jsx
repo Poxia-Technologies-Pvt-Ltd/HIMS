@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import '../../assets/CSS/LabTestManagement.css';
 import TestParametersSection from './TestParametersSection';
+import ResultFlagSettings from './ResultFlagSettings';
+import VerificationWorkflowSettings from './VerificationWorkflowSettings';
 
 const tok = () => localStorage.getItem('hims_token');
 const authHdr = () => ({ Authorization: `Bearer ${tok()}` });
 
 const LabTestManagement = () => {
   const [activeTab, setActiveTab] = useState('tests');
+  const [showFlagRules, setShowFlagRules] = useState(false);
+  const [showWorkflow, setShowWorkflow] = useState(false);
 
   // Tests (not tied to any specific analyzer)
   const [generalTests, setGeneralTests] = useState([]);
@@ -20,7 +24,7 @@ const LabTestManagement = () => {
   const [savingTest, setSavingTest] = useState(false);
   const [testForm, setTestForm] = useState({
     test_code: '', test_name: '', category_id: '', sample_type: '',
-    tube_color: '', storage_conditions: '', methodology: '', price: '',
+    tube_color: '', storage_conditions: '', methodology: '', price: '', tat_minutes: '',
     analyzer_name: '', parameters: []
   });
 
@@ -96,7 +100,7 @@ const LabTestManagement = () => {
     setEditingTest(null);
     setTestForm({
       test_code: '', test_name: '', category_id: '', sample_type: '',
-      tube_color: '', storage_conditions: '', methodology: '', price: '',
+      tube_color: '', storage_conditions: '', methodology: '', price: '', tat_minutes: '',
       analyzer_name: '',
       parameters: []
     });
@@ -113,6 +117,7 @@ const LabTestManagement = () => {
       sample_type: test.sample_type || '',
       tube_color: test.tube_color || '',
       storage_conditions: test.storage_conditions || '',
+      tat_minutes: test.tat_minutes ?? '',
       methodology: test.methodology || '',
       price: test.price || '',
       analyzer_name: test.analyzer_name || '',
@@ -285,6 +290,12 @@ const LabTestManagement = () => {
                 </span>
               </div>
               <div className="tests-panel-actions">
+                <button className="btn-secondary" onClick={() => setShowWorkflow(true)}>
+                  Verification Workflow
+                </button>
+                <button className="btn-secondary" onClick={() => setShowFlagRules(true)}>
+                  Flagging Rules
+                </button>
                 <button className="btn-primary" onClick={openAddTestModal}>
                   + Add Test
                 </button>
@@ -578,6 +589,16 @@ const LabTestManagement = () => {
                       rows={2}
                     />
                   </div>
+                  <div className="form-group">
+                    <label>Turnaround Target (minutes)</label>
+                    <input
+                      type="number" min="15" step="5"
+                      value={testForm.tat_minutes}
+                      onChange={e => setTestForm(p => ({ ...p, tat_minutes: e.target.value }))}
+                      placeholder="Leave blank to use the department default"
+                    />
+                    <small style={{ color: '#64748b' }}>Used by the worklist to flag TAT breaches. STAT orders get 25% of it, Urgent 50%.</small>
+                  </div>
                 </div>
               )}
 
@@ -736,6 +757,8 @@ const LabTestManagement = () => {
         </div>
       )}
 
+      {showFlagRules && <ResultFlagSettings onClose={() => setShowFlagRules(false)} />}
+      {showWorkflow && <VerificationWorkflowSettings onClose={() => setShowWorkflow(false)} />}
     </div>
   );
 };

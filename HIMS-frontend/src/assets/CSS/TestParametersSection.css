@@ -553,3 +553,10 @@
     gap: 12px;
   }
 }
+
+.flag-rules-section { margin: 14px 0 6px; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; }
+.flag-rules-section h5 { margin: 0 0 10px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: #475569; }
+.flag-rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.flag-rules-grid label { display: grid; gap: 4px; font-size: 11.5px; font-weight: 600; color: #64748b; }
+.flag-rules-grid input { height: 34px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; }
+.flag-rules-note { display: block; margin-top: 8px; font-size: 11.5px; color: #94a3b8; }

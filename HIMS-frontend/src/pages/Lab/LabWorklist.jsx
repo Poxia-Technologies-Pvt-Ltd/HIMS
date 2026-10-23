@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import JsBarcode from 'jsbarcode';
 import {
   Monitor,
@@ -22,8 +22,12 @@ import {
   Zap,
   AlertTriangle,
   HeartHandshake,
-  FileText
+  FileText,
+  SlidersHorizontal,
+  Timer
 } from 'lucide-react';
+import CriticalStrip from '../../components/CriticalStrip';
+import MaintenanceStrip from '../../components/MaintenanceStrip';
 import '../../assets/CSS/LabWorklist.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -47,8 +51,12 @@ const STATUS_COLORS = {
   'Rerun Requested': '#f59e0b'
 };
 
+const fmtMins = (m) => (m == null ? '—' : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`);
+
 export default function LabWorklist() {
-  const [selectedDepartment, setSelectedDepartment] = useState('all');
+  const [selectedDepartment, setSelectedDepartment] = useState(() => {
+    try { return localStorage.getItem('wl_department') || 'all'; } catch { return 'all'; }
+  });
   const [worklist, setWorklist] = useState([]);
   const [loading, setLoading] = useState(false);
   const [printLabel, setPrintLabel] = useState(null);
@@ -105,26 +113,65 @@ export default function LabWorklist() {
       .catch(console.error);
   }, [userRole]);
 
-  // Fetch worklist when department changes
-  useEffect(() => {
-    const fetchWorklist = async () => {
-      if (!selectedDepartment) return;
-      setLoading(true);
-      try {
-        const role_level = userRole;
-        const res = await fetch(`${API_BASE}/api/lab/worklist?department=${selectedDepartment}&branch_id=${selectedBranch}&role_level=${role_level}${patientSearch.trim() ? `&search=${encodeURIComponent(patientSearch.trim())}` : ''}`, { headers: authHdr() });
-        const data = await res.json();
-        if (data.success) {
-          setWorklist(data.worklist || []);
-        }
-      } catch (error) {
-        console.error('Error fetching worklist:', error);
-      } finally {
-        setLoading(false);
+  // Smart-worklist filters. Everything is applied server-side; the summary
+  // strip doubles as one-click presets.
+  const NO_FILTERS = { priority: '', status: '', analyzer: '', test_id: '', min_age: '', tat: '' };
+  const [filters, setFilters] = useState(NO_FILTERS);
+  const [showFilters, setShowFilters] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [analyzers, setAnalyzers] = useState([]);
+  const [knownTests, setKnownTests] = useState({});
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const versionRef = useRef(null);
+  const activeFilters = Object.values(filters).filter(Boolean).length;
+
+  useEffect(() => { try { localStorage.setItem('wl_department', selectedDepartment); } catch { /* private mode */ } }, [selectedDepartment]);
+
+  const loadWorklist = useCallback(async ({ silent = false } = {}) => {
+    if (!selectedDepartment) return;
+    if (!silent) setLoading(true);
+    try {
+      const q = new URLSearchParams({ department: selectedDepartment, branch_id: selectedBranch, role_level: userRole });
+      if (patientSearch.trim()) q.set('search', patientSearch.trim());
+      Object.entries(filters).forEach(([k, v]) => { if (v) q.set(k, v); });
+      const res = await fetch(`${API_BASE}/api/lab/worklist?${q}`, { headers: authHdr() });
+      const data = await res.json();
+      if (data.success) {
+        setWorklist(data.worklist || []);
+        setSummary(data.summary || null);
+        setAnalyzers(data.analyzers || []);
+        versionRef.current = data.version;
+        setLastUpdated(new Date());
+        // Test dropdown remembers every test seen, so choosing one doesn't empty the list of options.
+        setKnownTests((prev) => {
+          const next = { ...prev };
+          (data.worklist || []).forEach((w) => { next[w.test_id] = w.test_name; });
+          return next;
+        });
       }
-    };
-    fetchWorklist();
-  }, [selectedDepartment, selectedBranch, patientSearch]);
+    } catch (error) {
+      console.error('Error fetching worklist:', error);
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [selectedDepartment, selectedBranch, patientSearch, filters, userRole]);
+
+  useEffect(() => { loadWorklist(); }, [loadWorklist]);
+
+  // Near-real-time: the server bumps a per-facility counter on every receipt,
+  // result, order and transfer. Checking it is cheap, so poll every 5 s and
+  // reload only when it moves. A slower full reload keeps ages / TAT current.
+  useEffect(() => {
+    const check = setInterval(async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/lab/worklist/version?branch_id=${selectedBranch}`, { headers: authHdr() });
+        const d = await r.json();
+        if (d.success && versionRef.current && d.version !== versionRef.current) loadWorklist({ silent: true });
+      } catch { /* try again next tick */ }
+    }, 5000);
+    const refresh = setInterval(() => loadWorklist({ silent: true }), 60000);
+    return () => { clearInterval(check); clearInterval(refresh); };
+  }, [selectedBranch, loadWorklist]);
 
   // Generate barcode when print label is set
   useEffect(() => {
@@ -148,21 +195,7 @@ export default function LabWorklist() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [printLabel]);
 
-  const refreshWorklist = async () => {
-    setLoading(true);
-    try {
-      const role_level = userRole;
-      const res = await fetch(`${API_BASE}/api/lab/worklist?department=${selectedDepartment}&branch_id=${selectedBranch}&role_level=${role_level}${patientSearch.trim() ? `&search=${encodeURIComponent(patientSearch.trim())}` : ''}`, { headers: authHdr() });
-      const data = await res.json();
-      if (data.success) {
-        setWorklist(data.worklist || []);
-      }
-    } catch (error) {
-      console.error('Error fetching worklist:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const refreshWorklist = () => loadWorklist();
 
   const handleAcknowledge = async (item) => {
     try {
@@ -199,7 +232,7 @@ export default function LabWorklist() {
           // Set print label data
           setPrintLabel({
             sampleId,
-            queueNumber: item.lab_queue_number || '1',
+            queueNumber: item.token_number || item.lab_queue_number || '1',
             patientName: item.patient_name,
             testName: item.test_name,
             sampleType: item.sample_type,
@@ -465,6 +498,65 @@ export default function LabWorklist() {
         </div>
       )}
 
+      <CriticalStrip />
+      <MaintenanceStrip />
+
+      {/* Summary strip — one click applies the matching filter */}
+      {summary && (
+        <div className="wl-summary">
+          {[
+            { key: 'open', label: 'Open work', value: summary.open, apply: NO_FILTERS },
+            { key: 'breached', label: 'TAT breached', value: summary.breached, apply: { ...NO_FILTERS, tat: 'breached' }, tone: 'danger' },
+            { key: 'risk', label: 'At risk', value: summary.at_risk, apply: { ...NO_FILTERS, tat: 'at_risk' }, tone: 'warn' },
+            { key: 'stat', label: 'STAT', value: summary.stat, apply: { ...NO_FILTERS, priority: 'STAT' }, tone: 'danger' },
+            { key: 'urgent', label: 'Urgent', value: summary.urgent, apply: { ...NO_FILTERS, priority: 'Urgent' }, tone: 'warn' },
+            { key: 'verify', label: 'Awaiting verification', value: summary.awaiting_verification, apply: { ...NO_FILTERS, status: 'Test Done' } },
+          ].map((k) => (
+            <button key={k.key} className={`wl-kpi ${k.tone || ''}${k.value > 0 && k.tone ? ' hot' : ''}`} onClick={() => setFilters(k.apply)}>
+              <span className="wl-kpi-value">{k.value}</span><span className="wl-kpi-label">{k.label}</span>
+            </button>
+          ))}
+          <div className="wl-live" title="Updates automatically when samples are received, run or resulted">
+            <span className="wl-live-dot" />Live{lastUpdated ? ` · ${lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
+          </div>
+        </div>
+      )}
+
+      <div className="wl-filterbar">
+        <button className={`wl-filter-toggle${showFilters || activeFilters ? ' on' : ''}`} onClick={() => setShowFilters((v) => !v)}>
+          <SlidersHorizontal size={15} />Filters{activeFilters > 0 && <span className="wl-filter-count">{activeFilters}</span>}
+        </button>
+        {showFilters && (
+          <div className="wl-filter-fields">
+            <label>Priority
+              <select value={filters.priority} onChange={(e) => setFilters({ ...filters, priority: e.target.value })}>
+                <option value="">All</option><option>STAT</option><option>Urgent</option><option>Routine</option>
+              </select></label>
+            <label>Status
+              <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+                <option value="">All</option>{['Pending', 'Collected', 'In Progress', 'Test Done', 'Rerun Requested'].map((x) => <option key={x}>{x}</option>)}
+              </select></label>
+            <label>Analyzer
+              <select value={filters.analyzer} onChange={(e) => setFilters({ ...filters, analyzer: e.target.value })}>
+                <option value="">All</option>{analyzers.map((a) => <option key={a.name} value={a.name}>{a.name} ({a.model}) — {a.status}</option>)}
+              </select></label>
+            <label>Test
+              <select value={filters.test_id} onChange={(e) => setFilters({ ...filters, test_id: e.target.value })}>
+                <option value="">All</option>{Object.entries(knownTests).sort((x, y) => x[1].localeCompare(y[1])).map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+              </select></label>
+            <label>Waiting longer than
+              <select value={filters.min_age} onChange={(e) => setFilters({ ...filters, min_age: e.target.value })}>
+                <option value="">Any time</option><option value="1">1 hour</option><option value="4">4 hours</option><option value="12">12 hours</option><option value="24">1 day</option><option value="48">2 days</option>
+              </select></label>
+            <label>Turnaround
+              <select value={filters.tat} onChange={(e) => setFilters({ ...filters, tat: e.target.value })}>
+                <option value="">All</option><option value="at_risk">At risk or breached</option><option value="breached">Breached only</option>
+              </select></label>
+            {activeFilters > 0 && <button className="wl-clear" onClick={() => setFilters(NO_FILTERS)}>Clear filters</button>}
+          </div>
+        )}
+      </div>
+
       {/* Worklist Table */}
       <div className="worklist-section">
         <div className="worklist-header-bar">
@@ -535,16 +627,19 @@ export default function LabWorklist() {
                   <th>Sample Type</th>
                   <th>Container</th>
                   <th>Status</th>
+                  <th>Progress</th>
+                  <th>Analyzer</th>
+                  <th>TAT</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {worklist
-                  .filter(item => ['Pending', 'Collected', 'In Progress', 'Test Done'].includes(item.status))
+                  .filter(item => ['Pending', 'Collected', 'In Progress', 'Test Done', 'Rerun Requested'].includes(item.status))
                   .map((item, index) => (
                     <tr key={index} className={`status-${item.status?.toLowerCase().replace(' ', '-')}`}>
                       <td className="queue-number">
-                        <strong>#{item.lab_queue_number || index + 1}</strong>
+                        <strong>{item.token_number || `#${item.lab_queue_number || index + 1}`}</strong>
                       </td>
                       <td>
                         <div className="patient-info">
@@ -586,6 +681,13 @@ export default function LabWorklist() {
                           >
                             {item.status}
                           </span>
+                          {(item.has_critical || item.has_invalid || item.has_delta) ? (
+                            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                              {!!item.has_critical && <span className="wl-flag crit">Critical</span>}
+                              {!!item.has_invalid && <span className="wl-flag inv">Invalid</span>}
+                              {!!item.has_delta && <span className="wl-flag delta">Delta</span>}
+                            </div>
+                          ) : null}
                           {item.pending_params && item.pending_params.length > 0 && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#64748b', fontWeight: '600', maxWidth: '120px' }}>
                               <Clock size={10} />
@@ -597,6 +699,39 @@ export default function LabWorklist() {
                               Doctor: "{item.rerun_reason}" — redo via LIS Agent
                             </div>
                           )}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="wl-steps" title={['Ordered', 'Collected', 'Received', 'Processing', 'Resulted'][item.progress_step - 1]}>
+                          {[1, 2, 3, 4, 5].map((n) => <i key={n} className={n <= item.progress_step ? 'on' : ''} />)}
+                        </div>
+                        <div className="wl-step-label">
+                          {['Ordered', 'Collected', 'Received', 'Processing', 'Resulted'][item.progress_step - 1]}
+                          {item.parameters_total > 0 && ` · ${item.parameters_received}/${item.parameters_total}`}
+                        </div>
+                        {item.referred_from && <div className="wl-step-label">From {item.referred_from}</div>}
+                        {item.recollection_status === 'Recollection Pending' && <div className="wl-step-label bad">Recollection: {item.recollection_reason}</div>}
+                      </td>
+                      <td>
+                        {item.analyzer
+                          ? <div className="wl-analyzer"><span className="wl-dot on" />{item.analyzer}</div>
+                          : <div className="wl-analyzer"><span className={`wl-dot ${item.analyzer_status === 'Online' ? 'on' : item.analyzer_status === 'Offline' ? 'off' : ''}`} />{item.analyzer_status === 'Not mapped' ? 'No analyzer set up' : `${item.analyzers_online}/${item.analyzers_total} online`}</div>}
+                        {item.reagent_warnings?.some((r) => r.state === 'Expired') && (
+                          <div className="wl-step-label bad" title={item.reagent_warnings.filter((r) => r.state === 'Expired').map((r) => `${r.analyzer}: ${r.reagent} lot ${r.lot} expired`).join('\n')}>Reagent expired</div>
+                        )}
+                        {item.maintenance_overdue?.length > 0 && (
+                          <div className="wl-step-label bad" title={item.maintenance_overdue.map((m) => `${m.analyzer}: ${m.task} (${m.days_overdue}d overdue)`).join('\n')}>
+                            Maintenance overdue
+                          </div>
+                        )}
+                        {item.current_lab_name && <div className="wl-step-label">{item.current_lab_name}</div>}
+                      </td>
+                      <td>
+                        <span className={`wl-tat wl-tat-${item.tat_status.toLowerCase().replace(' ', '-')}`}><Timer size={11} />{item.tat_status}</span>
+                        <div className="wl-step-label">
+                          {item.is_open
+                            ? `${fmtMins(item.age_minutes)} of ${fmtMins(item.tat_minutes)}`
+                            : `Took ${fmtMins(item.turnaround_minutes)} (target ${fmtMins(item.tat_minutes)})`}
                         </div>
                       </td>
                       <td>

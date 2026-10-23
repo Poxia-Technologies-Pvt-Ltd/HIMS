@@ -1,0 +1,14 @@
+{
+  "name": "Karnataka LIMS — Field",
+  "short_name": "KA Field",
+  "description": "Register patients and collect samples at camps and mobile units, with or without a network.",
+  "start_url": "/field",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0d2554",
+  "icons": [
+    { "src": "/karnataka-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

@@ -1,4 +1,5 @@
 import db from '../config/db.js';
+import { passwordProblem } from '../utils/passwordPolicy.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
@@ -244,7 +245,7 @@ export const deleteHospital = async (req, res) => {
 // ── DISTRICTS ────────────────────────────────────────────────────────────────
 export const createDistrict = async (req, res) => {
   try {
-    const { name, state = 'Jharkhand' } = req.body;
+    const { name, state = null } = req.body;
     if (!name) return res.status(400).json({ success: false, message: 'District name required' });
     const [result] = await db.query(`INSERT INTO districts (name, state) VALUES (?, ?)`, [name, state]);
     res.json({ success: true, message: 'District created', id: result.insertId });
@@ -346,6 +347,8 @@ export const createUser = async (req, res) => {
     if (!email || !password || !role || !firstName) {
       return res.status(400).json({ success: false, message: 'firstName, email, password and role are required' });
     }
+    const problem = passwordProblem(password);
+    if (problem) return res.status(400).json({ success: false, message: problem });
     const hashed = await bcrypt.hash(password, 10);
     // VAPT #16 (No Compulsory Change Password Functionality): the developer
     // chose this password on the new user's behalf, so force a change on
@@ -395,7 +398,8 @@ export const resetPassword = async (req, res) => {
   try {
     const { id } = req.params;
     const { password } = req.body;
-    if (!password || password.length < 6) return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    const problem = passwordProblem(password);
+    if (problem) return res.status(400).json({ success: false, message: problem });
     const hashed = await bcrypt.hash(password, 10);
     // VAPT #16: a reset password is admin-chosen, same as at account
     // creation — force the user to pick their own on next login.

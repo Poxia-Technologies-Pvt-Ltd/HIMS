@@ -15,11 +15,11 @@ export default function DeveloperLogin() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [info, setInfo]       = useState('');
-  const { svg: captchaSvg, captchaId, refresh: refreshCaptcha, applyCaptcha } = useCaptcha();
+  const { svg: captchaSvg, captchaId, refresh: refreshCaptcha, applyCaptcha, captchaEnabled } = useCaptcha();
 
   const handleSendOTP = async (e) => {
     e.preventDefault();
-    if (!captchaText) {
+    if (captchaEnabled && !captchaText) {
       setError('Please enter the captcha text.');
       return;
     }
@@ -100,6 +100,7 @@ export default function DeveloperLogin() {
               style={styles.input}
               autoFocus
             />
+            {captchaEnabled && (<>
             <label style={styles.label}>Captcha</label>
             <div style={styles.captchaRow}>
               <div
@@ -128,6 +129,7 @@ export default function DeveloperLogin() {
               style={styles.input}
               autoComplete="off"
             />
+            </>)}
             <button type="submit" disabled={loading} style={styles.btn}>
               {loading ? 'Sending…' : 'Send OTP →'}
             </button>

@@ -1,0 +1,36 @@
+.ca-page { padding: 24px; max-width: 1100px; margin: 0 auto; }
+.ca-head { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; }
+.ca-head h1 { margin: 0 0 4px; font-size: 24px; color: #0f172a; } .ca-head p { margin: 0; font-size: 13px; color: #64748b; max-width: 560px; }
+.ca-tabs { display: flex; gap: 4px; align-self: flex-start; background: #f1f5f9; padding: 4px; border-radius: 10px; }
+.ca-tabs button { border: none; background: transparent; padding: 8px 16px; border-radius: 8px; font: 700 13px inherit; font-family: inherit; color: #475569; cursor: pointer; }
+.ca-tabs button.active { background: #fff; color: #b91c1c; box-shadow: 0 1px 4px rgba(15,23,42,.1); }
+.ca-banner { padding: 11px 16px; border-radius: 10px; margin-bottom: 14px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-weight: 600; font-size: 13.5px; }
+.ca-list { display: grid; gap: 14px; }
+.ca-empty { padding: 50px; text-align: center; color: #94a3b8; background: #fff; border-radius: 14px; border: 1px dashed #cbd5e1; }
+.ca-card { background: #fff; border: 1px solid #e2e8f0; border-left: 5px solid #f59e0b; border-radius: 14px; padding: 16px 20px; display: grid; gap: 10px; }
+.ca-card.overdue { border-left-color: #dc2626; background: #fffafa; } .ca-card.done { border-left-color: #10b981; opacity: .85; }
+.ca-card-top { display: flex; justify-content: space-between; gap: 16px; }
+.ca-patient { font-size: 16px; font-weight: 700; color: #0f172a; } .ca-patient span { font-size: 12.5px; font-weight: 500; color: #64748b; margin-left: 8px; }
+.ca-sub { font-size: 12.5px; color: #64748b; }
+.ca-state { text-align: right; display: grid; gap: 4px; justify-items: end; }
+.ca-badge { padding: 3px 11px; border-radius: 99px; font-size: 11.5px; font-weight: 800; }
+.ca-badge.warn { background: #fef3c7; color: #92400e; } .ca-badge.bad { background: #fee2e2; color: #991b1b; } .ca-badge.ok { background: #d1fae5; color: #065f46; }
+.ca-time { font-size: 12px; color: #64748b; }
+.ca-values { display: flex; flex-wrap: wrap; gap: 8px; }
+.ca-val { padding: 6px 12px; border-radius: 9px; background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d; font-size: 14px; }
+.ca-val b { margin-right: 6px; } .ca-val i { margin-left: 8px; font-style: normal; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.ca-log { margin: 0; padding: 10px 14px 10px 30px; background: #f8fafc; border-radius: 10px; font-size: 12.5px; color: #334155; line-height: 1.6; }
+.ca-btn { justify-self: start; height: 38px; padding: 0 20px; border: none; border-radius: 9px; background: #dc2626; color: #fff; font: 700 13.5px inherit; font-family: inherit; cursor: pointer; }
+.ca-btn.ghost { background: #fff; color: #334155; border: 1.5px solid #cbd5e1; } .ca-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ca-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(15,23,42,.55); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.ca-modal { width: 100%; max-width: 560px; background: #fff; border-radius: 16px; padding: 24px 26px; box-shadow: 0 30px 70px rgba(15,23,42,.35); }
+.ca-modal h2 { margin: 0 0 4px; }
+.ca-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+.ca-modal label { display: grid; gap: 5px; font-size: 12px; font-weight: 700; color: #334155; }
+.ca-modal select, .ca-modal input:not([type=checkbox]), .ca-modal textarea { padding: 9px 11px; border: 1.5px solid #e2e8f0; border-radius: 9px; font-size: 14px; font-family: inherit; }
+.ca-check { display: flex !important; align-items: center; gap: 10px; padding: 10px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; font-size: 13px !important; color: #14532d !important; margin-bottom: 12px; }
+.ca-note { margin-bottom: 12px; }
+.ca-msg { padding: 9px 12px; border-radius: 9px; font-size: 13px; margin-bottom: 10px; } .ca-msg.ok { background: #ecfdf5; color: #065f46; } .ca-msg.bad { background: #fef2f2; color: #991b1b; }
+.ca-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.ca-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; margin: 0 0 14px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 13.5px; font-weight: 600; }
+.ca-strip a { color: #991b1b; text-decoration: underline; font-weight: 700; }

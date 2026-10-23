@@ -1,0 +1,92 @@
+/* Offline-capable Registration, Sample Collection and the sync queue. Builds on theme.css. */
+.ofl-page { max-width: 1400px; }
+.spin { animation: ofl-spin 1s linear infinite; }
+@keyframes ofl-spin { to { transform: rotate(360deg); } }
+
+/* Banner shown while the server cannot be reached / things wait to sync */
+.ofl-banner { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 12px; padding: 10px 20px; font-size: 13px; border-bottom: 1px solid; }
+.ofl-banner.offline { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+.ofl-banner.syncing { background: #fffbeb; border-color: #fde68a; color: #92400e; }
+.ofl-banner-text { flex: 1; line-height: 1.4; }
+.ofl-attn { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; font-weight: 800; }
+
+.ofl-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+.ofl-grid.collect { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
+@media (max-width: 1000px) { .ofl-grid, .ofl-grid.collect { grid-template-columns: 1fr; } }
+
+/* Registration form */
+.ofl-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px 18px; }
+.ofl-fields .wide { grid-column: 1 / -1; }
+.ofl-fields .req { color: #dc2626; font-style: normal; margin-left: 3px; }
+.ofl-age { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px; }
+.ofl-age input { width: 64px; padding: 4px 8px; }
+.ofl-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.ofl-error { display: flex; align-items: center; gap: 8px; margin-top: 16px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--color-danger-bg); border: 1px solid var(--color-danger-border); color: #b91c1c; font-size: 13px; }
+.ofl-note { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 10px 14px; border-radius: var(--radius-sm); background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); color: #92400e; font-size: 12.5px; }
+.ofl-result { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding: 18px 22px; border-radius: var(--radius-md); border: 1px solid; }
+.ofl-result.online { background: var(--color-success-bg); border-color: var(--color-success-border); color: #047857; }
+.ofl-result.offline { background: var(--color-warning-bg); border-color: var(--color-warning-border); color: #92400e; }
+.ofl-result-body { flex: 1; }
+.ofl-result h3 { margin: 0 0 4px; font-size: 16px; }
+.ofl-result p { margin: 0; font-size: 13.5px; }
+.ofl-provisional { display: inline-block; margin-top: 10px; padding: 6px 14px; background: #fff; border: 1.5px dashed currentColor; border-radius: 8px; font: 800 18px 'Courier New', monospace; letter-spacing: .06em; color: #0f172a; }
+.ofl-result-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Side list and queue rows */
+.ofl-side .card-header, .ofl-section .card-header, .ofl-page .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ofl-count { margin-left: 6px; padding: 2px 9px; border-radius: 99px; background: var(--color-neutral-bg); font-size: 12px; font-weight: 800; color: var(--text-secondary); }
+.ofl-empty { margin: 0; padding: 22px; font-size: 13px; color: var(--text-muted); text-align: center; }
+.ofl-empty.big { padding: 70px 24px; display: grid; justify-items: center; gap: 10px; }
+.ofl-list, .ofl-queue { list-style: none; margin: 0; padding: 0; }
+.ofl-list li, .ofl-queue li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--border-subtle); }
+.ofl-list li div, .ofl-queue li > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.ofl-list small, .ofl-queue small { font-size: 12px; color: var(--text-muted); }
+.ofl-err-text { color: #b91c1c !important; }
+.ofl-queue.compact li { padding: 9px 18px; }
+.ofl-row-actions { display: flex; gap: 8px; flex: none; }
+.ofl-section { margin-bottom: 18px; }
+.ofl-section.attn { border-color: var(--color-danger-border); }
+.ofl-section h3 { display: flex; align-items: center; gap: 8px; }
+.ofl-hint { margin: 0 0 14px; font-size: 13px; color: var(--text-secondary); }
+.ofl-allclear { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; padding: 16px 20px; border-radius: var(--radius-md); background: var(--color-success-bg); border: 1px solid var(--color-success-border); color: #047857; font-size: 14px; font-weight: 600; }
+
+/* Duplicate review */
+.ofl-review { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; padding: 14px 0; border-top: 1px solid var(--border-subtle); }
+.ofl-review:first-of-type { border-top: 0; }
+.ofl-review-new { display: grid; gap: 3px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--color-warning-bg); border: 1px solid var(--color-warning-border); font-size: 13px; }
+.ofl-review-new small { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #92400e; }
+.ofl-review-matches { display: grid; gap: 8px; align-content: start; }
+.ofl-match { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.ofl-match small { display: block; font-size: 12px; color: var(--text-muted); }
+.ofl-review code, .ofl-match code { font-size: 12px; background: #fff; border: 1px solid var(--border-subtle); border-radius: 5px; padding: 1px 6px; }
+.ofl-review .btn-secondary { justify-self: start; }
+
+/* Sample collection */
+.ofl-fresh { display: flex; align-items: center; gap: 6px; margin: -6px 0 14px; font-size: 12.5px; color: var(--text-muted); }
+.ofl-search { display: flex; align-items: center; gap: 8px; padding: 0 10px; height: 34px; border: 1.5px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-sunken); color: var(--text-muted); }
+.ofl-search input { border: 0 !important; outline: 0; background: transparent; box-shadow: none !important; padding: 0; font-size: 13px; width: 170px; }
+.ofl-orders { list-style: none; margin: 0; padding: 0; max-height: calc(100vh - 290px); overflow-y: auto; }
+.ofl-order { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 0; border-top: 1px solid var(--border-subtle); background: #fff; text-align: left; cursor: pointer; font: inherit; }
+.ofl-order:hover { background: var(--surface-sunken); }
+.ofl-order.active { background: var(--brand-blue-light); box-shadow: inset 3px 0 0 var(--brand-blue); }
+.ofl-order.done .ofl-order-main { opacity: .7; }
+.ofl-token { min-width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--brand-gradient); color: #fff; font-weight: 800; font-size: 15px; flex: none; }
+.ofl-order-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ofl-order-main b { font-size: 14px; color: var(--text-primary); }
+.ofl-order-main small { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ofl-detail { position: sticky; top: 16px; }
+.ofl-sub { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-muted); }
+.ofl-containers { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 10px; }
+.ofl-containers li { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.ofl-tube { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: #fff; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+.ofl-container-main { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.ofl-container-main small { font-size: 12px; color: var(--text-muted); }
+.ofl-sample-id { font-family: 'Courier New', monospace; font-size: 13.5px; letter-spacing: .02em; }
+.ofl-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
+.ofl-chip { padding: 2px 9px; border-radius: 99px; background: #fff; border: 1px solid var(--border-subtle); font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.ofl-msg { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; border: 1px solid; }
+.ofl-msg.ok { background: var(--color-success-bg); border-color: var(--color-success-border); color: #047857; }
+.ofl-msg.offline, .ofl-msg.warn { background: var(--color-warning-bg); border-color: var(--color-warning-border); color: #92400e; margin-top: 14px; }
+.ofl-msg.error { background: var(--color-danger-bg); border-color: var(--color-danger-border); color: #b91c1c; margin-top: 14px; }
+.ofl-age input.control { width: 78px; height: 32px; padding: 0 10px; }
+.ofl-form select.control { appearance: auto; }

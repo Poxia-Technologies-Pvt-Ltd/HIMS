@@ -14,6 +14,7 @@ const blockClipboard = (e) => e.preventDefault();
 const PASSWORD_REQUIREMENTS = [
   { re: /.{8,}/, label: 'At least 8 characters' },
   { re: /[A-Z]/, label: 'One uppercase letter' },
+  { re: /[a-z]/, label: 'One lowercase letter' },
   { re: /[0-9]/, label: 'One number' },
   { re: /[^A-Za-z0-9]/, label: 'One special character' },
 ];
@@ -94,8 +95,8 @@ function ResetPassword() {
       setError('This reset link is missing its token. Please use the link from your email.');
       return;
     }
-    if (form.newPassword.length < 8) {
-      setError('New password must be at least 8 characters.');
+    if (!(form.newPassword.length >= 8 && /[A-Z]/.test(form.newPassword) && /[a-z]/.test(form.newPassword) && /[0-9]/.test(form.newPassword) && /[^A-Za-z0-9]/.test(form.newPassword))) {
+      setError('Password must be at least 8 characters, with an upper-case letter, a lower-case letter, a number and a symbol.');
       return;
     }
     if (form.newPassword !== form.confirmPassword) {

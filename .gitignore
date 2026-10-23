@@ -39,3 +39,6 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Staff documents (ID proofs, certificates) uploaded through Employee Management
+HIMS-backend/uploads/employee-docs/

@@ -1,10 +1,12 @@
 import db from '../config/db.js';
+import { syncConsultationOrders } from '../utils/charges.js';
+import { nowIST } from '../utils/hr.js';
 
 // GET /api/consultations/today
 export const getTodayAppointments = async (req, res) => {
   try {
     const { doctorId } = req.query;
-    const date = new Date().toISOString().split('T')[0];
+    const date = nowIST().date;
 
     let query = `
       SELECT
@@ -16,6 +18,10 @@ export const getTodayAppointments = async (req, res) => {
         a.appt_date,
         a.appt_time,
         a.reason,
+        a.status        AS appt_status,
+        a.token_number,
+        DATE_FORMAT(a.checkin_time, '%H:%i') AS checkin_time,
+        a.booking_source,
         p.first_name,
         p.middle_name,
         p.last_name,
@@ -28,7 +34,7 @@ export const getTodayAppointments = async (req, res) => {
       FROM appointments a
       LEFT JOIN patients p  ON a.reg_no = p.reg_no
       LEFT JOIN consultations c ON a.id = c.appointment_id
-      WHERE a.appt_date = ?
+      WHERE a.appt_date = ? AND a.status NOT IN ('Cancelled', 'No Show')
     `;
     const params = [date];
 
@@ -41,7 +47,7 @@ export const getTodayAppointments = async (req, res) => {
       params.push(doctorId);
     }
 
-    query += ` ORDER BY a.appt_time ASC`;
+    query += ` ORDER BY FIELD(a.priority, 'Urgent', 'Emergency') DESC, a.appt_time ASC`;
 
     const [rows] = await db.query(query, params);
     res.json({ success: true, appointments: rows });
@@ -83,9 +89,16 @@ export const getConsultationDetails = async (req, res) => {
       [consultation.id]
     );
 
+    const [imagingOrders] = await db.query(
+      `SELECT id, modality, body_part, urgency, clinical_indication, status
+         FROM radiology_orders WHERE consultation_id = ? ORDER BY id ASC`,
+      [consultation.id]
+    );
+
     consultation.vitals        = vitals[0] || null;
     consultation.prescriptions = prescriptions;
     consultation.labOrders     = labOrders;
+    consultation.imagingOrders = imagingOrders;
 
     // Parse stored JSON fields
     if (consultation.icd10_codes) {
@@ -248,7 +261,7 @@ export const saveConsultation = async (req, res) => {
       appointmentId, doctorId, patientRegNo,
       chiefComplaints, diagnosis, notes, followUpDate,
       soapHistory, soapExam, patientInstructions, icd10Codes,
-      vitals, prescriptions, labOrders,
+      vitals, prescriptions, labOrders, imagingOrders,
     } = req.body;
 
     if (!appointmentId || !patientRegNo) {
@@ -354,29 +367,15 @@ export const saveConsultation = async (req, res) => {
       }
     }
 
-    // 4. Replace lab orders (full replace to support urgency/indication updates)
-    await connection.query(
-      `DELETE FROM doctor_lab_orders WHERE consultation_id = ?`,
-      [consultationId]
-    );
-    if (labOrders?.length > 0) {
-      for (const order of labOrders) {
-        if (order.test_id) {
-          await connection.query(
-            `INSERT INTO doctor_lab_orders
-               (consultation_id, patient_reg_no, doctor_id, test_id, status, urgency, clinical_indication, order_date)
-             VALUES (?, ?, ?, ?, 'Pending', ?, ?, NOW())`,
-            [
-              consultationId, patientRegNo, doctorId || null, order.test_id,
-              order.urgency || 'Routine', order.clinicalIndication || null,
-            ]
-          );
-        }
-      }
-    }
+    // 4. Lab and imaging orders: kept in step with what the doctor saved, each
+    // with a pending charge for the billing desk. Orders already billed stay.
+    const { kept } = await syncConsultationOrders(connection, {
+      consultationId, appointmentId, patientRegNo, doctorId,
+      labOrders: labOrders || [], imagingOrders: imagingOrders || [],
+    });
 
     await connection.commit();
-    res.status(201).json({ success: true, message: 'Consultation saved', consultationId });
+    res.status(201).json({ success: true, message: 'Consultation saved', consultationId, kept_orders: kept });
 
   } catch (error) {
     await connection.rollback();

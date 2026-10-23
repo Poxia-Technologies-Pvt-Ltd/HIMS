@@ -9,10 +9,11 @@ import {
   savePrescriptionTemplate,
   deletePrescriptionTemplate,
   getFollowUpDue,
-  autoBillFromConsultation,
+  
   getPatientTimeline,
   sendSummarySMS,
 } from '../controllers/consultationController.js';
+import { medicineStock } from '../controllers/imagingController.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -20,9 +21,9 @@ const DOCTOR_ROLES = ['Doctor', 'Admin', 'Super Admin'];
 
 // Specific routes before wildcard
 router.get('/today',                    authenticateToken, authorizeRole(DOCTOR_ROLES), getTodayAppointments);
+router.get('/medicine-stock',           authenticateToken, authorizeRole([...DOCTOR_ROLES, 'Pharmacist', 'Nurse']), medicineStock);
 router.get('/followup-due',             authenticateToken, authorizeRole(DOCTOR_ROLES), getFollowUpDue);
 router.post('/',                        authenticateToken, authorizeRole(DOCTOR_ROLES), saveConsultation);
-router.post('/auto-bill',               authenticateToken, authorizeRole(DOCTOR_ROLES), autoBillFromConsultation);
 router.post('/send-summary-sms',        authenticateToken, authorizeRole(DOCTOR_ROLES), sendSummarySMS);
 router.get('/patient/:regNo/history',   authenticateToken, authorizeRole(DOCTOR_ROLES), getPatientHistory);
 router.get('/patient/:regNo/lab-trends',authenticateToken, authorizeRole(DOCTOR_ROLES), getPatientLabTrends);

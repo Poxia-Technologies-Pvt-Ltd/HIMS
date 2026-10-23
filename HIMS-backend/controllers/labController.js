@@ -8,8 +8,28 @@ import * as cdacService from '../services/cdacService.js';
 import { buildSampleCollectionPayload, buildStatusUpdatePayload, buildResultRowDataPayload, buildReportPayload } from '../services/cdacMapper.js';
 import * as careService from '../services/careService.js';
 import { buildResultOruPayload } from '../services/careMapper.js';
-import { sendWhatsAppMessage } from '../services/whatsappService.js';
 import { generateSampleIdForItem } from '../utils/sampleId.js';
+import { effectiveTat, tatStatus } from '../utils/worklistTat.js';
+import { PUBLIC_APP_URL } from '../config/publicUrl.js';
+import { diffResults, logResultAudit, snapshotVersion } from '../utils/resultAudit.js';
+import { syncCriticalAlert } from '../utils/criticalAlerts.js';
+import { currentReagents, reagentSnapshot, loadedInventoryItemIds } from '../utils/reagents.js';
+import { canonicalReportContent, contentHash, sealFor, confirmPassword, verifyKey, checkSignature } from '../utils/reportSignature.js';
+import { loadWorkflows, nextAction, TECHNICAL_ROLE_CHOICES, CLINICAL_ROLE_CHOICES } from '../utils/verificationWorkflow.js';
+import { evaluateResults, externalFlag, getFlagSettings, clearFlagSettingsCache } from '../utils/resultFlags.js';
+import { worklistVersion } from '../utils/worklistSignal.js';
+import { advanceSampleInOwnTransaction, advanceSampleQuietly, actorFromReq } from '../utils/sampleLifecycle.js';
+import { dispatchReport, recordDelivery, updateDelivery, maskPhone, DeliveryError } from '../utils/reportDelivery.js';
+import { manualEntryCheck, MANUAL_REASONS, canEnterManually } from '../utils/manualEntry.js';
+import { prepareDscForApproval, saveSignedReport } from '../utils/doctorDsc.js';
+import { verifyPdfSignature } from '../utils/dscSigner.js';
+
+const pdfToBuffer = (doc) => new Promise((resolve, reject) => {
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  doc.on('end', () => resolve(Buffer.concat(chunks)));
+  doc.on('error', reject);
+});
 
 // Lab Categories Management
 export const getLabCategories = async (req, res) => {
@@ -342,6 +362,7 @@ export const addLabTest = async (req, res) => {
       methodology,
       price,
       analyzer_name,
+      tat_minutes,
       parameters
     } = req.body;
 
@@ -374,9 +395,9 @@ export const addLabTest = async (req, res) => {
       // Insert lab test
       const [testResult] = await connection.query(
         `INSERT INTO lab_tests
-         (test_code, test_name, category_id, lab_id, sample_type, tube_color, storage_conditions, methodology, price, analyzer_name)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [test_code, test_name, category_id, lab_id || null, sample_type, tube_color, storage_conditions, methodology, price, analyzer_name || null]
+         (test_code, test_name, category_id, lab_id, sample_type, tube_color, storage_conditions, methodology, price, analyzer_name, tat_minutes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [test_code, test_name, category_id, lab_id || null, sample_type, tube_color, storage_conditions, methodology, price, analyzer_name || null, tat_minutes ? Number(tat_minutes) : null]
       );
 
       const testId = testResult.insertId;
@@ -389,8 +410,9 @@ export const addLabTest = async (req, res) => {
             `INSERT INTO lab_test_parameters 
              (test_id, parameter_code, parameter_name, parameter_unit, result_type, min_value, max_value,
               men_min_value, men_max_value, women_min_value, women_max_value,
-              kids_min_value, kids_max_value, use_demographic_ranges, display_order, is_calculated, formula, options, machine_parameter_code) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              kids_min_value, kids_max_value, use_demographic_ranges, display_order, is_calculated, formula, options, machine_parameter_code,
+              critical_low, critical_high, measurable_min, measurable_max, delta_percent, delta_absolute, delta_days) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               testId,
               param.parameter_code || null,
@@ -410,7 +432,9 @@ export const addLabTest = async (req, res) => {
               param.is_calculated ? 1 : 0,
               param.formula || null,
               param.options || null,
-              param.machine_parameter_code || null
+              param.machine_parameter_code || null,
+              ruleNum(param.critical_low), ruleNum(param.critical_high), ruleNum(param.measurable_min), ruleNum(param.measurable_max),
+              ruleNum(param.delta_percent), ruleNum(param.delta_absolute), ruleNum(param.delta_days)
             ]
           );
         }
@@ -455,6 +479,7 @@ export const updateLabTest = async (req, res) => {
       methodology,
       price,
       analyzer_name,
+      tat_minutes,
       parameters
     } = req.body;
 
@@ -473,9 +498,9 @@ export const updateLabTest = async (req, res) => {
       const [result] = await connection.query(
         `UPDATE lab_tests
          SET test_code = ?, test_name = ?, category_id = ?, lab_id = ?, sample_type = ?, tube_color = ?,
-             storage_conditions = ?, methodology = ?, price = ?, analyzer_name = ?
+             storage_conditions = ?, methodology = ?, price = ?, analyzer_name = ?, tat_minutes = ?
          WHERE id = ?`,
-        [test_code, test_name, category_id, lab_id || null, sample_type, tube_color, storage_conditions, methodology, price, analyzer_name || null, id]
+        [test_code, test_name, category_id, lab_id || null, sample_type, tube_color, storage_conditions, methodology, price, analyzer_name || null, tat_minutes ? Number(tat_minutes) : null, id]
       );
 
       if (result.affectedRows === 0) {
@@ -495,8 +520,9 @@ export const updateLabTest = async (req, res) => {
             `INSERT INTO lab_test_parameters 
              (test_id, parameter_code, parameter_name, parameter_unit, result_type, min_value, max_value,
               men_min_value, men_max_value, women_min_value, women_max_value,
-              kids_min_value, kids_max_value, use_demographic_ranges, display_order, is_calculated, formula, options, machine_parameter_code) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              kids_min_value, kids_max_value, use_demographic_ranges, display_order, is_calculated, formula, options, machine_parameter_code,
+              critical_low, critical_high, measurable_min, measurable_max, delta_percent, delta_absolute, delta_days) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               id,
               param.parameter_code || null,
@@ -516,7 +542,9 @@ export const updateLabTest = async (req, res) => {
               param.is_calculated ? 1 : 0,
               param.formula || null,
               param.options || null,
-              param.machine_parameter_code || null
+              param.machine_parameter_code || null,
+              ruleNum(param.critical_low), ruleNum(param.critical_high), ruleNum(param.measurable_min), ruleNum(param.measurable_max),
+              ruleNum(param.delta_percent), ruleNum(param.delta_absolute), ruleNum(param.delta_days)
             ]
           );
         }
@@ -994,17 +1022,156 @@ export const getSuggestedLab = async (req, res) => {
 // ============================================
 
 // Get worklist for lab technicians (pending tests by department)
+// Machine Master departments are free text ("Hematology Analyzers",
+// "Electrolyte Analyzers"); test departments are lab_categories names. A
+// machine serves a department when its text contains the name or a known alias.
+const DEPT_ALIASES = {
+  biochemistry: ['clinical chemistry', 'chemistry', 'electrolyte'],
+  hematology: ['haematology', 'coagulation'],
+  immunology: ['immunoassay'],
+  serology: ['immunoassay'],
+  'clinical pathology': ['urine', 'urinalysis'],
+  microbiology: ['culture'],
+};
+const machineServes = (machineDept, category) => {
+  const m = String(machineDept || '').toLowerCase();
+  const c = String(category || '').toLowerCase();
+  if (!m || !c) return false;
+  return m.includes(c) || (DEPT_ALIASES[c] || []).some((a) => m.includes(a));
+};
+
+// results_json is a JSON column: the driver hands back a parsed array, but older
+// rows / other drivers may give a string.
+const asResultArray = (v) => (Array.isArray(v) ? v : typeof v === 'string' ? JSON.parse(v || '[]') : []);
+
+// GET /api/lab/verification-workflows — the facility default and each
+// discipline's effective workflow (own or inherited).
+export const getVerificationWorkflows = async (req, res) => {
+  try {
+    const wf = await loadWorkflows(db);
+    const [cats] = await db.query("SELECT id, name FROM lab_categories WHERE status = 'Active' ORDER BY name");
+    res.json({
+      success: true,
+      default: wf.defaultWorkflow,
+      disciplines: cats.map((c) => ({ id: c.id, name: c.name, inherited: !wf.map.has(c.id), workflow: wf.forCategory(c.id) })),
+      role_choices: { technical: TECHNICAL_ROLE_CHOICES, clinical: CLINICAL_ROLE_CHOICES },
+    });
+  } catch (error) {
+    console.error('Error reading verification workflows:', error);
+    res.status(500).json({ success: false, message: 'Server error reading workflows' });
+  }
+};
+
+// PUT /api/lab/verification-workflows/:category_id   (0 = facility default)
+//   body: { levels, technical_roles[], clinical_roles[], enforce_segregation, auto_verify_normal } or { inherit: true }
+export const saveVerificationWorkflow = async (req, res) => {
+  try {
+    const categoryId = Number(req.params.category_id);
+    if (!Number.isInteger(categoryId) || categoryId < 0) return res.status(400).json({ success: false, message: 'Invalid discipline.' });
+    if (categoryId > 0) {
+      const [[cat]] = await db.query('SELECT id FROM lab_categories WHERE id = ?', [categoryId]);
+      if (!cat) return res.status(404).json({ success: false, message: 'Discipline not found.' });
+    }
+    if (req.body.inherit) {
+      if (categoryId === 0) return res.status(400).json({ success: false, message: 'The facility default cannot inherit.' });
+      await db.query('DELETE FROM lab_verification_workflows WHERE category_id = ?', [categoryId]);
+      return res.json({ success: true, message: 'Discipline now follows the facility default.' });
+    }
+    const { levels } = req.body;
+    const tech = (req.body.technical_roles || []).filter((r) => TECHNICAL_ROLE_CHOICES.includes(r));
+    const clin = (req.body.clinical_roles || []).filter((r) => CLINICAL_ROLE_CHOICES.includes(r));
+    if (!['Two-level', 'Single'].includes(levels)) return res.status(400).json({ success: false, message: 'Choose Two-level or Single.' });
+    if (levels === 'Two-level' && tech.length === 0) return res.status(400).json({ success: false, message: 'Select who may technically validate.' });
+    if (clin.length === 0) return res.status(400).json({ success: false, message: 'Select who may authorize (doctor / lab head).' });
+    await db.query(
+      `INSERT INTO lab_verification_workflows (category_id, levels, technical_roles, clinical_roles, enforce_segregation, auto_verify_normal, updated_by,
+                                               critical_notify, critical_notify_minutes, critical_block_approval)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE levels = VALUES(levels), technical_roles = VALUES(technical_roles), clinical_roles = VALUES(clinical_roles),
+         enforce_segregation = VALUES(enforce_segregation), auto_verify_normal = VALUES(auto_verify_normal), updated_by = VALUES(updated_by),
+         critical_notify = VALUES(critical_notify), critical_notify_minutes = VALUES(critical_notify_minutes), critical_block_approval = VALUES(critical_block_approval)`,
+      [categoryId, levels, tech.join(','), clin.join(','), req.body.enforce_segregation ? 1 : 0, levels === 'Two-level' && req.body.auto_verify_normal ? 1 : 0, req.user?.id || null,
+       req.body.critical_notify === false ? 0 : 1, Math.min(Math.max(parseInt(req.body.critical_notify_minutes, 10) || 30, 5), 1440), req.body.critical_block_approval === false || req.body.critical_notify === false ? 0 : 1]
+    );
+    res.json({ success: true, message: 'Workflow saved.' });
+  } catch (error) {
+    console.error('Error saving verification workflow:', error);
+    res.status(500).json({ success: false, message: 'Server error saving workflow' });
+  }
+};
+
+const ruleNum = (v) => (v === '' || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+
+// GET/PUT /api/lab/result-flag-settings — facility-wide defaults for the
+// flagging rules (per-parameter rules are edited with the test itself).
+export const getResultFlagSettings = async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT setting_key, setting_value, description FROM result_flag_settings ORDER BY setting_key');
+    res.json({ success: true, settings: rows });
+  } catch (error) {
+    console.error('Error reading flag settings:', error);
+    res.status(500).json({ success: false, message: 'Server error reading settings' });
+  }
+};
+
+export const updateResultFlagSettings = async (req, res) => {
+  try {
+    const incoming = req.body?.settings || {};
+    const [known] = await db.query('SELECT setting_key FROM result_flag_settings');
+    const allowed = new Set(known.map((k) => k.setting_key));
+    for (const [key, value] of Object.entries(incoming)) {
+      if (!allowed.has(key)) continue;
+      const v = String(value ?? '').trim().slice(0, 500);
+      if (['delta_enabled', 'trust_analyzer_alerts'].includes(key) && !['0', '1'].includes(v)) {
+        return res.status(400).json({ success: false, message: `${key} must be 0 or 1.` });
+      }
+      if (['delta_default_days', 'kids_max_age_years'].includes(key) && !(Number(v) > 0)) {
+        return res.status(400).json({ success: false, message: `${key} must be a positive number.` });
+      }
+      if (key === 'delta_default_percent' && v !== '' && !(Number(v) > 0)) {
+        return res.status(400).json({ success: false, message: 'Default delta % must be a positive number or blank.' });
+      }
+      await db.query('UPDATE result_flag_settings SET setting_value = ? WHERE setting_key = ?', [v, key]);
+    }
+    clearFlagSettingsCache();
+    res.json({ success: true, message: 'Flagging rules saved.' });
+  } catch (error) {
+    console.error('Error saving flag settings:', error);
+    res.status(500).json({ success: false, message: 'Server error saving settings' });
+  }
+};
+
+// GET /api/lab/worklist/version — the facility's change counter; screens poll
+// this and reload the worklist only when it moves.
+export const getWorklistVersion = (req, res) => {
+  const scope = req.user?.role_level !== 'Central' && req.user?.branch_id ? req.user.branch_id
+    : (req.query.branch_id && req.query.branch_id !== 'all' ? req.query.branch_id : null);
+  res.json({ success: true, version: worklistVersion(scope) });
+};
+
+// GET /api/lab/worklist — the smart worklist.
+//   Scope:   staff pinned to a facility only ever see that facility; the
+//            branch_id param is honoured only for unpinned (central) users.
+//   Window:  today's orders, plus any OPEN work (not yet resulted) from the
+//            last `days` days (default 7) — pending work must not vanish at
+//            midnight, or age and TAT breach could never be seen.
+//   Filters: department, priority, test_id, status, analyzer, min_age (hours
+//            of open work), tat (breached | at_risk), search.
 export const getWorklist = async (req, res) => {
   try {
-    const { department, branch_id, role_level, search } = req.query;
+    const { department, search, priority, test_id, status, analyzer, tat } = req.query;
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 90);
+    const minAgeHours = Number(req.query.min_age) > 0 ? Number(req.query.min_age) : 0;
+    const scope = req.user?.role_level !== 'Central' && req.user?.branch_id ? req.user.branch_id
+      : (req.query.branch_id && req.query.branch_id !== 'all' ? req.query.branch_id : null);
 
-    // Base query to get pending lab tests from bills
-    // Also check if results exist in lab_test_result
+    const params = [];
     let query = `
-      SELECT 
+      SELECT
         bi.id as bill_item_id,
         b.id as bill_id,
         b.bill_number,
+        b.branch_id,
         p.id as patient_id,
         p.reg_no,
         CONCAT(p.first_name, ' ', p.last_name) as patient_name,
@@ -1013,6 +1180,8 @@ export const getWorklist = async (req, res) => {
         lt.test_code,
         lt.sample_type,
         lt.tube_color,
+        lt.tat_minutes as test_tat,
+        lc.tat_minutes as category_tat,
         lc.name as category_name,
         lc.name as department,
         CASE
@@ -1024,15 +1193,26 @@ export const getWorklist = async (req, res) => {
         bi.short_id,
         bi.merged_at,
         bi.lab_barcode,
-        i.name as lab_name,
+        COALESCE(hl.name, i.name) as current_lab_name,
+        lsh.stage as sample_stage,
         b.created_at as bill_date,
+        TIMESTAMPDIFF(MINUTE, b.created_at, NOW()) as age_minutes,
+        TIMESTAMPDIFF(MINUTE, b.created_at, tr.tested_at) as turnaround_minutes,
         b.priority,
         b.referring_facility,
         b.referring_clinician,
         b.clinical_notes,
         b.billing_type,
         b.scheme_name,
+        qt.token_number,
+        qt.status as token_status,
+        ri.id as referral_id,
+        CASE WHEN ri.from_branch_id <> ri.to_branch_id THEN rfb.branch_name END as referred_from,
+        rj.reason_label as recollection_reason,
+        rj.status as recollection_status,
         tr.id as result_id,
+        tr.machine_no as processed_on,
+        tr.has_abnormal, tr.has_critical, tr.has_invalid, tr.has_delta,
         tr.results_json,
         tr.tested_at as result_tested_at,
         tr.rerun_reason,
@@ -1044,29 +1224,34 @@ export const getWorklist = async (req, res) => {
       LEFT JOIN lab_categories lc ON lt.category_id = lc.id
       LEFT JOIN infrastructure i ON bi.lab_id = i.id
       LEFT JOIN lab_test_result tr ON bi.sample_id = tr.sample_id
+      LEFT JOIN patient_queue_tokens qt ON qt.bill_id = b.id AND qt.service_point = 'Sample Collection'
+      LEFT JOIN sample_rejections rj ON rj.recollect_sample_id = bi.sample_id
+      LEFT JOIN lab_samples lsh ON lsh.sample_id = bi.sample_id
+      LEFT JOIN infrastructure hl ON hl.id = lsh.holder_lab_id
+      LEFT JOIN sample_referrals ri ON ri.sample_id = bi.sample_id AND ri.status = 'Received'
+             ${scope ? 'AND ri.to_branch_id = ?' : ''}
+             AND lsh.holder_branch_id = ri.to_branch_id
+      LEFT JOIN branches rfb ON rfb.id = ri.from_branch_id
       WHERE bi.service_type = 'Laboratory'
       AND bi.status IN ('Pending', 'Collected', 'In Progress', 'Test Done')
       AND b.payment_status IN ('Pending', 'Partial', 'Paid')
-      AND DATE(b.created_at) = CURDATE()
+      AND (DATE(b.created_at) = CURDATE() OR b.created_at >= CURDATE() - INTERVAL ? DAY OR ri.id IS NOT NULL)
+      AND (lsh.stage IS NULL OR lsh.stage <> 'In Transit')
     `;
+    if (scope) params.push(scope);
+    params.push(days);
 
-    const params = [];
-
-    // Filter by branch context (Isolate data strictly to the user's physical hospital lab)
-    if (branch_id && branch_id !== 'all') {
-      query += ` AND b.branch_id = ?`;
-      params.push(branch_id);
+    // A sample referred in from another facility is this lab's work too; one
+    // referred OUT is no longer on this lab's bench.
+    if (scope) {
+      query += ` AND ((b.branch_id = ? AND (lsh.holder_branch_id IS NULL OR lsh.holder_branch_id = b.branch_id)) OR ri.id IS NOT NULL)`;
+      params.push(scope);
     }
+    if (department && department !== 'all') { query += ` AND LOWER(lc.name) = LOWER(?)`; params.push(department); }
+    if (priority && priority !== 'all') { query += ` AND b.priority = ?`; params.push(priority); }
+    if (test_id) { query += ` AND lt.id = ?`; params.push(test_id); }
 
-    // Filter by department if specified
-    if (department && department !== 'all') {
-      query += ` AND LOWER(lc.name) = LOWER(?)`;
-      params.push(department);
-    }
-
-    // One box, any identifier the operator happens to be holding — our reg_no
-    // or sample id, the CARE UHID, an ABHA number, a phone number, or the CARE
-    // patient UUID. See utils/identifierSearch.js.
+    // One box, any identifier the operator happens to be holding — see utils/identifierSearch.js.
     if (search) {
       const { clause, params: searchParams } = identifierSearchClause(search, {
         patients: 'p', billItems: 'bi', sampleId: 'bi.sample_id', testName: 'lt.test_name',
@@ -1075,56 +1260,128 @@ export const getWorklist = async (req, res) => {
       params.push(...searchParams);
     }
 
-    // Deduplicate any accidental double-billing of the exact same test on the same bill
-    query += ` GROUP BY bi.bill_id, bi.service_id, bi.id, b.id, p.id, lt.id, lc.name, tr.id`;
-
-    // STAT/Urgent orders surface first regardless of when they were billed —
-    // that's the whole point of a priority field on a lab worklist; within
-    // the same priority, oldest-first (FIFO) as before.
+    query += ` GROUP BY bi.bill_id, bi.service_id, bi.id, b.id, p.id, lt.id, lc.name, tr.id, qt.id, rj.id, ri.id, rfb.branch_name, hl.name, ri.from_branch_id, ri.to_branch_id`;
+    // STAT/Urgent first; within a priority, oldest first.
     query += ` ORDER BY FIELD(b.priority, 'STAT', 'Urgent', 'Routine'), b.created_at ASC`;
+    const [rows] = await db.query(query, params);
 
-    const [worklist] = await db.query(query, params);
+    // Analyzers at this facility, joined to the department each model serves
+    // (Machine Master) — gives every row an analyzer status without a
+    // per-row lookup.
+    const [machines] = await db.query(
+      `SELECT m.id, m.name, m.model, m.status, i.branch_id, LOWER(mm.department) AS department
+       FROM lab_machines m
+       JOIN infrastructure i ON i.id = m.lab_id
+       LEFT JOIN machine_models mm ON mm.manufacturer = m.manufacturer AND mm.model = m.model
+       ${scope ? 'WHERE i.branch_id = ?' : ''}`,
+      scope ? [scope] : []
+    );
+    const isLive = (m) => ['Online', 'Active'].includes(m.status);
 
-    // Assign strictly sequential daily lab queue numbers based on unique bills
-    let currentQueueNo = 1;
+    // Overdue preventive maintenance — a WARNING on the rows the equipment
+    // serves. It never changes whether a test can be run.
+    const [overdueTasks] = machines.length
+      ? await db.query(
+          `SELECT machine_id, task_name, DATEDIFF(CURDATE(), next_due_at) AS days_overdue
+           FROM equipment_pm_schedules WHERE active = 1 AND next_due_at < CURDATE() AND machine_id IN (?)`, [machines.map((m) => m.id)])
+      : [[]];
+
+    // Parameter counts for tests mid-run, in one query rather than one per row.
+    const runningIds = [...new Set(rows.filter((r) => r.status === 'In Progress').map((r) => r.test_id))];
+    const paramsByTest = {};
+    if (runningIds.length) {
+      const [pr] = await db.query('SELECT test_id, parameter_name FROM lab_test_parameters WHERE test_id IN (?)', [runningIds]);
+      for (const r of pr) (paramsByTest[r.test_id] ||= []).push(r.parameter_name);
+    }
+
+    const expiredReagents = (await currentReagents({ scopeBranch: scope })).filter((r) => r.state !== 'OK');
+
+    let queueNo = 1;
     const billQueueMap = {};
+    let worklist = rows.map((item) => {
+      if (!billQueueMap[item.bill_id]) billQueueMap[item.bill_id] = queueNo++;
 
-    const formattedWorklist = await Promise.all(worklist.map(async (item) => {
-      if (!billQueueMap[item.bill_id]) {
-        billQueueMap[item.bill_id] = currentQueueNo++;
-      }
+      // Progress through the lab: ordered → collected → received → processing → resulted.
+      const done = item.status === 'Test Done' || item.status === 'Rerun Requested';
+      const step = done ? 5
+        : (item.status === 'In Progress' || item.sample_stage === 'Processing') ? 4
+        : item.sample_stage === 'Received' ? 3
+        : (item.status === 'Collected' || item.sample_stage === 'Collected') ? 2 : 1;
 
       let pending_params = [];
+      let parameters_total = 0;
+      let parameters_received = 0;
       if (item.status === 'In Progress') {
-        // Fetch all required parameters for this specific test
-        const [allParams] = await db.query(
-          `SELECT parameter_name FROM lab_test_parameters WHERE test_id = ?`,
-          [item.test_id]
-        );
-
         let receivedNames = [];
-        try {
-          receivedNames = JSON.parse(item.results_json || '[]').map(r => r.parameter_name.toLowerCase());
-        } catch (e) {
-          receivedNames = [];
-        }
-
-        pending_params = allParams
-          .filter(p => !receivedNames.includes(p.parameter_name.toLowerCase()))
-          .map(p => p.parameter_name);
+        try { receivedNames = asResultArray(item.results_json).map((r) => String(r.parameter_name || '').toLowerCase()); } catch { receivedNames = []; }
+        const all = paramsByTest[item.test_id] || [];
+        pending_params = all.filter((n) => !receivedNames.includes(n.toLowerCase()));
+        parameters_total = all.length;
+        parameters_received = all.length - pending_params.length;
       }
+
+      const dept = String(item.department || '').toLowerCase();
+      const candidates = machines.filter((m) => machineServes(m.department, dept));
+      const online = candidates.filter(isLive).length;
+      const maintenance_overdue = overdueTasks
+        .filter((t) => candidates.some((m) => m.id === t.machine_id))
+        .map((t) => ({ analyzer: candidates.find((m) => m.id === t.machine_id).name, task: t.task_name, days_overdue: Number(t.days_overdue) }));
+      const reagent_warnings = expiredReagents
+        .filter((r) => candidates.some((m) => m.id === r.machine_id))
+        .map((r) => ({ analyzer: r.machine_name, reagent: r.reagent_name, lot: r.lot_no, state: r.state, days_left: r.days_left }));
+      const analyzer_status = candidates.length === 0 ? 'Not mapped'
+        : online > 0 ? 'Online'
+        : candidates.some((m) => m.status === 'Maintenance') ? 'Maintenance' : 'Offline';
+
+      const tatTarget = effectiveTat({ testTat: item.test_tat, categoryTat: item.category_tat, priority: item.priority });
+      const elapsed = done && item.turnaround_minutes != null ? Number(item.turnaround_minutes) : Number(item.age_minutes);
+      const tat_status = tatStatus({ elapsedMinutes: elapsed, tat: tatTarget, done });
 
       return {
         ...item,
         lab_queue_number: billQueueMap[item.bill_id],
-        pending_params
+        pending_params,
+        parameters_total,
+        parameters_received,
+        progress_step: step,
+        analyzer: item.processed_on || null,
+        analyzer_status,
+        maintenance_overdue,
+        reagent_warnings,
+        analyzers_online: online,
+        analyzers_total: candidates.length,
+        tat_minutes: tatTarget,
+        tat_status,
+        tat_remaining_minutes: done ? null : tatTarget - elapsed,
+        is_open: !done,
       };
-    }));
+    });
 
+    // Filters that depend on the computed fields.
+    if (['Pending', 'Collected', 'In Progress', 'Test Done', 'Rerun Requested'].includes(status)) worklist = worklist.filter((w) => w.status === status);
+    if (analyzer && analyzer !== 'all') {
+      const target = machines.find((m) => m.name === analyzer);
+      worklist = worklist.filter((w) => w.analyzer === analyzer || (target && machineServes(target.department, w.department)));
+    }
+    if (minAgeHours) worklist = worklist.filter((w) => w.is_open && w.age_minutes >= minAgeHours * 60);
+    if (tat === 'breached') worklist = worklist.filter((w) => w.tat_status === 'Breached');
+    else if (tat === 'at_risk') worklist = worklist.filter((w) => w.tat_status === 'At risk' || w.tat_status === 'Breached');
+
+    const open = worklist.filter((w) => w.is_open);
     res.json({
       success: true,
-      worklist: formattedWorklist,
-      count: formattedWorklist.length
+      worklist,
+      count: worklist.length,
+      summary: {
+        open: open.length,
+        breached: open.filter((w) => w.tat_status === 'Breached').length,
+        at_risk: open.filter((w) => w.tat_status === 'At risk').length,
+        stat: open.filter((w) => w.priority === 'STAT').length,
+        urgent: open.filter((w) => w.priority === 'Urgent').length,
+        awaiting_verification: worklist.filter((w) => w.status === 'Test Done').length,
+      },
+      analyzers: machines.map((m) => ({ name: m.name, model: m.model, status: m.status, department: m.department })),
+      version: worklistVersion(scope),
     });
   } catch (error) {
     console.error('Error fetching worklist:', error);
@@ -1134,9 +1391,21 @@ export const getWorklist = async (req, res) => {
 
 export const getWorklistById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id || '').trim();
+
+    // The analyzer reports either the full sample ID (globally unique — safe
+    // to match on any day) or just the running number the technician keyed in
+    // (the last four digits). That short number is only unique within ONE
+    // facility on ONE day, so it is matched against today's samples at the
+    // caller's own branch only. Without that, a number not yet billed today
+    // could resolve to an old unfinished sample with the same four digits —
+    // or to another facility's — and the result would land on the wrong
+    // patient.
+    const shortPart = id.slice(-4);
+    const scopeBranch = req.user?.role_level !== 'Central' ? req.user?.branch_id : null;
+
     const [rows] = await db.query(`
-      SELECT 
+      SELECT
         bi.id as bill_item_id,
         b.id as bill_id,
         p.id as patient_id,
@@ -1151,14 +1420,31 @@ export const getWorklistById = async (req, res) => {
       JOIN bills b ON bi.bill_id = b.id
       JOIN patients p ON b.patient_id = p.id
       JOIN lab_tests lt ON bi.service_id = lt.id
-      WHERE (bi.sample_id = ? OR bi.short_id = ? OR bi.short_id LIKE ?)
+      WHERE (
+              bi.sample_id = ?
+              OR (bi.short_id = ? AND DATE(b.created_at) = CURDATE() ${scopeBranch ? `AND b.branch_id = ? AND NOT EXISTS (SELECT 1 FROM lab_samples x WHERE x.sample_id = bi.sample_id AND x.holder_branch_id IS NOT NULL AND x.holder_branch_id <> b.branch_id)` : ''})
+              ${scopeBranch ? `OR (bi.short_id = ? AND EXISTS (SELECT 1 FROM sample_referrals r
+                    WHERE r.sample_id = bi.sample_id AND r.to_branch_id = ? AND r.status = 'Received' AND DATE(r.received_at) = CURDATE()))` : ''}
+            )
       AND bi.status IN ('Pending', 'Collected', 'In Progress')
-      ORDER BY bi.id DESC
+      ORDER BY (bi.sample_id = ?) DESC, bi.id DESC
       LIMIT 1
-    `, [id, id, `%${id.slice(-4)}`]);
+    `, scopeBranch ? [id, shortPart, scopeBranch, shortPart, scopeBranch, id] : [id, shortPart, id]);
 
     if (rows.length === 0) {
       return res.json({ success: false, message: 'No active test found' });
+    }
+
+    // ?all=1 — everything still to be run on this specimen, with the details an analyzer needs
+    // when it asks the LIS what to do with a sample (host query / worklist download).
+    if (req.query.all) {
+      const [tests] = await db.query(
+        `SELECT bi.id AS bill_item_id, lt.id AS test_id, lt.test_name, lt.test_code, lt.loinc_code, lt.sample_type
+           FROM bill_items bi JOIN lab_tests lt ON bi.service_id = lt.id
+          WHERE bi.sample_id = ? AND bi.status IN ('Pending', 'Collected', 'In Progress') ORDER BY bi.id`, [rows[0].sample_id]);
+      const [[pt]] = await db.query(
+        `SELECT p.reg_no, p.first_name, p.last_name, p.gender, p.dob, b.priority FROM bills b JOIN patients p ON p.id = b.patient_id WHERE b.id = ?`, [rows[0].bill_id]);
+      return res.json({ success: true, test: rows[0], tests, patient: pt || null });
     }
 
     res.json({ success: true, test: rows[0] });
@@ -1177,7 +1463,9 @@ export const generateSampleId = async (req, res) => {
       return res.status(400).json({ success: false, message: 'branch_id is required' });
     }
 
-    const { sampleId, shortId, sequence } = await generateSampleIdForItem(db, branch_id, department);
+    const { sampleId, shortId, sequence } = await generateSampleIdForItem(db, branch_id, department, {
+      id: req.user?.id || null, role: req.user?.role || null, ip: req.ip,
+    });
 
     res.json({
       success: true,
@@ -1393,6 +1681,15 @@ export const acknowledgeTest = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Bill item not found'
+      });
+    }
+
+    // Sample lifecycle: acknowledging at the worklist is the collection step.
+    // Best-effort — tracking must never block recording the collection itself.
+    if ((status || 'Collected') === 'Collected' && effectiveSampleId) {
+      await advanceSampleInOwnTransaction(db, {
+        sample_id: effectiveSampleId, to: 'Collected', note: 'Acknowledged at the worklist',
+        actor: actorFromReq(req, { id: req.user?.id || collected_by || null }),
       });
     }
 
@@ -1628,7 +1925,72 @@ export const getActivityLogs = async (req, res) => {
 // ============================================
 
 // Save test results from lab machine
+// GET /api/lab/manual-entry/reasons — the reasons offered when a result is typed by hand.
+export const getManualEntryReasons = (req, res) => res.json({ success: true, reasons: MANUAL_REASONS, allowed: canEnterManually(req.user) });
+
+// GET /api/lab/manual-entry/form/:billItemId — what a technician needs to type a
+// result in by hand: the test, who it is for, each parameter with unit and
+// reference range, and anything already entered.
+export const getManualEntryForm = async (req, res) => {
+  try {
+    if (!canEnterManually(req.user)) return res.status(403).json({ success: false, message: 'Your role cannot enter results by hand.' });
+    const scope = req.user?.role_level !== 'Central' ? req.user?.branch_id : null;
+    const [[item]] = await db.query(
+      `SELECT bi.id AS bill_item_id, bi.service_id AS test_id, bi.service_name AS test_name, bi.sample_id, bi.status, b.branch_id,
+              CONCAT_WS(' ', p.first_name, p.last_name) AS patient_name, p.gender, p.dob, lt.analyzer_name
+         FROM bill_items bi JOIN bills b ON b.id = bi.bill_id
+         LEFT JOIN patients p ON p.id = b.patient_id LEFT JOIN lab_tests lt ON lt.id = bi.service_id
+        WHERE bi.id = ? AND bi.service_type = 'Laboratory' ${scope ? 'AND b.branch_id = ?' : ''}`,
+      scope ? [req.params.billItemId, scope] : [req.params.billItemId]);
+    if (!item) return res.status(404).json({ success: false, message: 'Test not found.' });
+
+    const [params] = await db.query(
+      "SELECT * FROM lab_test_parameters WHERE test_id = ? AND status = 'Active' ORDER BY display_order, id", [item.test_id]);
+    const years = item.dob ? (Date.now() - new Date(item.dob).getTime()) / (365.25 * 24 * 3600 * 1000) : null;
+    const gender = String(item.gender || '').toLowerCase();
+    const range = (p) => {
+      let lo = p.min_value; let hi = p.max_value;
+      if (p.use_demographic_ranges) {
+        if (years !== null && years < 12 && p.kids_min_value !== null) { lo = p.kids_min_value; hi = p.kids_max_value; }
+        else if (gender.startsWith('m') && p.men_min_value !== null) { lo = p.men_min_value; hi = p.men_max_value; }
+        else if (gender.startsWith('f') && p.women_min_value !== null) { lo = p.women_min_value; hi = p.women_max_value; }
+      }
+      return lo !== null && hi !== null ? `${Number(lo)} - ${Number(hi)}` : '';
+    };
+
+    const [[existing]] = await db.query(
+      'SELECT results_json, status FROM lab_test_result WHERE bill_item_id = ? ORDER BY id DESC LIMIT 1', [item.bill_item_id]);
+    let entered = [];
+    try { entered = existing ? (typeof existing.results_json === 'string' ? JSON.parse(existing.results_json) : existing.results_json) || [] : []; } catch { entered = []; }
+    const valueOf = (name) => entered.find((r) => String(r.parameter_name || '').toLowerCase() === String(name).toLowerCase())?.result_value ?? '';
+
+    res.json({
+      success: true,
+      reasons: MANUAL_REASONS,
+      test: {
+        bill_item_id: item.bill_item_id, test_id: item.test_id, test_name: item.test_name, sample_id: item.sample_id, status: item.status,
+        patient_name: item.patient_name, gender: item.gender, age: years !== null ? Math.floor(years) : null,
+        interfaced: !!String(item.analyzer_name || '').trim(),
+        result_status: existing?.status || null,
+      },
+      parameters: params.map((p) => ({
+        parameter_name: p.parameter_name, unit: p.parameter_unit || '', reference_range: range(p), result_type: p.result_type,
+        options: p.result_type === 'select' ? String(p.options || '').split(/[\n,;|]+/).map((o) => o.trim()).filter(Boolean) : [],
+        calculated: !!p.is_calculated, value: valueOf(p.parameter_name),
+      })),
+    });
+  } catch (error) {
+    console.error('Error building manual entry form:', error);
+    res.status(500).json({ success: false, message: 'Server error loading the entry form' });
+  }
+};
+
 export const saveTestResults = async (req, res) => {
+  // A result typed or changed by hand needs an authorised role and a reason —
+  // decided before anything is touched (tender #33).
+  const manual = manualEntryCheck(req);
+  if (manual.error) return res.status(manual.error.status).json({ success: false, code: manual.error.code, message: manual.error.message });
+
   const connection = await db.getConnection();
 
   try {
@@ -1667,7 +2029,7 @@ export const saveTestResults = async (req, res) => {
     let labId = null;
     
     const [billItem] = await connection.query(
-      `SELECT b.patient_id, bi.lab_id FROM bill_items bi 
+      `SELECT b.patient_id, bi.lab_id, bi.service_id, b.branch_id AS bill_branch_id FROM bill_items bi 
        JOIN bills b ON bi.bill_id = b.id 
        WHERE bi.sample_id = ? OR bi.id = ? LIMIT 1`,
       [sample_id, bill_item_id || null]
@@ -1676,21 +2038,64 @@ export const saveTestResults = async (req, res) => {
     if (billItem && billItem.length > 0) {
       if (!resolvedPatientId) resolvedPatientId = billItem[0].patient_id;
       labId = billItem[0].lab_id;
+      var stockBranchId = billItem[0].bill_branch_id;
     }
+    const rulesTestId = test_id || billItem?.[0]?.service_id || null;
+    let flagSummary = { abnormal: 0, critical: 0, invalid: 0, delta: 0 };
+
+    // Flags are computed here, on the server, from the configured rules — an
+    // analyzer's own H/L is only an input. Never lets a rules problem block
+    // saving a result.
+    const applyRules = async (rows, excludeId) => {
+      try {
+        const ev = await evaluateResults(connection, { results: rows, test_id: rulesTestId, patient_id: resolvedPatientId, exclude_result_id: excludeId, before: testedAt });
+        flagSummary = ev.summary;
+        return ev.results;
+      } catch (err) {
+        console.error('Result flag evaluation failed:', err.message);
+        return rows;
+      }
+    };
 
     // CHECK IF RESULTS ALREADY EXIST — prefer bill_item_id lookup, fall back to sample_id
     const [existing] = await connection.query(
       bill_item_id
-        ? `SELECT id, results_json FROM lab_test_result WHERE bill_item_id = ? ORDER BY id DESC LIMIT 1`
-        : `SELECT id, results_json FROM lab_test_result WHERE sample_id   = ? ORDER BY id DESC LIMIT 1`,
+        ? `SELECT id, results_json, status, report_version, verified_by, approved_by, approved_at, branch_id FROM lab_test_result WHERE bill_item_id = ? ORDER BY id DESC LIMIT 1`
+        : `SELECT id, results_json, status, report_version, verified_by, approved_by, approved_at, branch_id FROM lab_test_result WHERE sample_id   = ? ORDER BY id DESC LIMIT 1`,
       [bill_item_id || sample_id]
     );
+
+    // Editing a result that has already been validated or authorized is an
+    // amendment: it needs a reason, keeps the old version, revokes the old
+    // signature and sends the result back for validation and authorization.
+    const auditActor = actorFromReq(req, { id: req.user?.id || tested_by || null, station: machine_no ? `Analyzer ${machine_no}` : undefined });
+    const editReason = String(req.body.edit_reason || req.body.amend_reason || '').trim();
+    let amendment = null;
+    if (existing && existing.length > 0) {
+      const prev = existing[0];
+      if (prev.status === 'Cancelled') {
+        await connection.rollback();
+        return res.status(409).json({ success: false, code: 'REPORT_CANCELLED', message: 'This report was cancelled. Reissue it before changing results.' });
+      }
+      if (['Verified', 'Approved'].includes(prev.status)) {
+        if (editReason.length < 5) {
+          await connection.rollback();
+          return res.status(409).json({
+            success: false, code: 'AMENDMENT_REASON_REQUIRED',
+            message: `This result is already ${prev.status}. Give a reason (at least 5 characters) to amend it — it will need validation and authorization again.`,
+          });
+        }
+        amendment = { reason: editReason, from: prev.status, version: Number(prev.report_version || 1) };
+      }
+    }
+    const oldSnapshot = existing && existing.length > 0 ? JSON.parse(JSON.stringify(asResultArray(existing[0].results_json))) : null;
+    if (amendment) await snapshotVersion(connection, { result: existing[0], reason: amendment.reason, actor: auditActor });
 
     if (existing && existing.length > 0) {
       // APPEND LOGIC
       let currentResults = [];
       try {
-        currentResults = JSON.parse(existing[0].results_json || '[]');
+        currentResults = asResultArray(existing[0].results_json);
       } catch (e) {
         currentResults = [];
       }
@@ -1707,14 +2112,41 @@ export const saveTestResults = async (req, res) => {
 
       // Re-submitting results (e.g. after a doctor's rerun request) clears
       // the rerun fields — a fresh result no longer needs the old flag/reason.
+      currentResults = await applyRules(currentResults, existing[0].id);
       await connection.query(
         `UPDATE lab_test_result
-         SET results_json = ?, machine_no = ?, tested_at = NOW(), status = ?,
-             rerun_reason = NULL, rerun_requested_by = NULL, rerun_requested_at = NULL
+         SET results_json = ?, machine_no = COALESCE(?, machine_no), tested_at = NOW(), status = ?,
+             rerun_reason = NULL, rerun_requested_by = NULL, rerun_requested_at = NULL,
+             has_abnormal = ?, has_critical = ?, has_invalid = ?, has_delta = ?
          WHERE id = ?`,
-        [JSON.stringify(currentResults), machine_no || null, resultStatus, existing[0].id]
+        [JSON.stringify(currentResults), machine_no || null, resultStatus,
+         flagSummary.abnormal > 0 ? 1 : 0, flagSummary.critical > 0 ? 1 : 0, flagSummary.invalid > 0 ? 1 : 0, flagSummary.delta > 0 ? 1 : 0, existing[0].id]
       );
       var finalResultId = existing[0].id;
+      var finalResultsForAuto = currentResults;
+
+      const diff = diffResults(oldSnapshot, currentResults);
+      if (amendment) {
+        await connection.query(
+          `UPDATE lab_test_result SET verified_by = NULL, verified_at = NULL, approved_by = NULL, approved_at = NULL,
+                  report_version = report_version + 1 WHERE id = ?`, [finalResultId]);
+        await connection.query("UPDATE bill_items SET status = 'Test Done', updated_at = NOW() WHERE sample_id = ? AND status = 'Completed'", [sample_id]);
+        await logResultAudit(connection, {
+          result_id: finalResultId, sample_id, branch_id: existing[0].branch_id, action: 'Edited after authorization — re-verification required',
+          from_status: amendment.from, to_status: 'Test Done', actor: auditActor, reason: amendment.reason, version: amendment.version + 1, details: diff,
+          note: 'Previous signature revoked; previous version kept',
+        });
+      } else if (existing[0].status === 'Rerun Requested') {
+        await logResultAudit(connection, { result_id: finalResultId, sample_id, branch_id: existing[0].branch_id, action: 'Rerun result received',
+          from_status: 'Rerun Requested', to_status: resultStatus, actor: auditActor, reason: editReason || null, version: existing[0].report_version, details: diff });
+      } else if (diff.changes.length > 0) {
+        await logResultAudit(connection, { result_id: finalResultId, sample_id, branch_id: existing[0].branch_id, action: 'Result edited',
+          from_status: existing[0].status, to_status: resultStatus, actor: auditActor, reason: editReason || null, version: existing[0].report_version, details: diff });
+      } else if (diff.added.length > 0) {
+        await logResultAudit(connection, { result_id: finalResultId, sample_id, branch_id: existing[0].branch_id, action: 'Parameters received',
+          from_status: existing[0].status, to_status: resultStatus, actor: auditActor, version: existing[0].report_version, details: { added: diff.added },
+          note: machine_no ? `From ${machine_no}` : 'Manual entry' });
+      }
     } else {
       // INSERT LOGIC (First parameter for this test)
       // branch_id was never set here, so every insert fell back to the column
@@ -1734,26 +2166,100 @@ export const saveTestResults = async (req, res) => {
       );
       const resolvedBranchId = branchRow?.branch_id || null;
 
+      const evaluated = await applyRules(results, null);
       const [insertResult] = await connection.query(
         `INSERT INTO lab_test_result
          (bill_item_id, patient_id, sample_id, machine_no, test_id, test_name,
-          results_json, tested_by, tested_at, status, branch_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          results_json, tested_by, tested_at, status, branch_id,
+          has_abnormal, has_critical, has_invalid, has_delta)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           bill_item_id || null,
           resolvedPatientId || null,
           sample_id,
           machine_no || null,
-          test_id || null,
+          test_id || rulesTestId || null,
           test_name || null,
-          JSON.stringify(results),
+          JSON.stringify(evaluated),
           tested_by || null,
           testedAt,
           resultStatus,
           resolvedBranchId,
+          flagSummary.abnormal > 0 ? 1 : 0, flagSummary.critical > 0 ? 1 : 0, flagSummary.invalid > 0 ? 1 : 0, flagSummary.delta > 0 ? 1 : 0,
         ]
       );
       var finalResultId = insertResult.insertId;
+      var finalResultsForAuto = evaluated;
+      // Which reagent lots were on the analyzer when this result was produced.
+      const lotsOnBoard = await reagentSnapshot(connection, machine_no).catch(() => null);
+      if (lotsOnBoard) await connection.query('UPDATE lab_test_result SET reagent_lots = ? WHERE id = ?', [JSON.stringify(lotsOnBoard), finalResultId]);
+      await logResultAudit(connection, { result_id: finalResultId, sample_id, branch_id: resolvedBranchId, action: 'Result recorded', to_status: resultStatus,
+        actor: auditActor, version: 1, details: { parameters: evaluated.length, reagents: lotsOnBoard }, note: machine_no ? `From ${machine_no}` : (req.user?.isDeviceKey ? 'LIS-Agent entry' : 'Manual entry') });
+    }
+
+    // The checksum of the request an agent sent this result in (tender #111), kept with the result.
+    if (req.bodySha256 && req.user?.isDeviceKey) {
+      await connection.query('UPDATE lab_test_result SET capture_sha256 = ? WHERE id = ?', [req.bodySha256, finalResultId]);
+    }
+
+    // Manual entry: the reason stays with the result, and the audit trail says who
+    // typed or changed what, and why.
+    if (manual.manual) {
+      await connection.query(
+        'UPDATE lab_test_result SET entry_mode = ?, manual_reason_code = ?, manual_reason = ? WHERE id = ?',
+        [manual.mode, manual.code, manual.text.slice(0, 500), finalResultId]);
+      const [[mrow]] = await connection.query('SELECT branch_id, report_version, status FROM lab_test_result WHERE id = ?', [finalResultId]);
+      await logResultAudit(connection, {
+        result_id: finalResultId, sample_id, branch_id: mrow?.branch_id, action: manual.mode === 'edited' ? 'Captured value changed by hand' : 'Result typed manually',
+        to_status: mrow?.status, actor: auditActor, reason: manual.text, version: mrow?.report_version,
+        details: { reason_code: manual.code, parameters: results.map((r) => r.parameter_name) },
+        note: 'Manual entry — reason recorded',
+      });
+    }
+
+    // Auto technical validation: a discipline can let fully-received, unflagged
+    // results skip manual technical validation (Two-level workflows only).
+    // Never for a hand-typed value: a person must validate it.
+    try {
+      const [[cat]] = rulesTestId ? await connection.query('SELECT category_id FROM lab_tests WHERE id = ?', [rulesTestId]) : [[null]];
+      const wf = (await loadWorkflows(connection)).forCategory(cat?.category_id);
+      const noFlags = flagSummary.abnormal + flagSummary.critical + flagSummary.invalid + flagSummary.delta === 0;
+      if (wf.levels === 'Two-level' && wf.auto_verify_normal && noFlags && rulesTestId && !manual.manual) {
+        const [[need]] = await connection.query("SELECT COUNT(*) AS n FROM lab_test_parameters WHERE test_id = ? AND status = 'Active' AND is_calculated = 0", [rulesTestId]);
+        const got = new Set(finalResultsForAuto.map((r) => String(r.parameter_name || '').toLowerCase()));
+        if (Number(need.n) > 0 && got.size >= Number(need.n)) {
+          const [upd] = await connection.query("UPDATE lab_test_result SET status = 'Verified', verified_at = NOW(), verified_by = NULL WHERE id = ? AND status = 'Test Done'", [finalResultId]);
+          if (upd.affectedRows) {
+            await connection.query(
+              `INSERT INTO lab_result_audit (result_id, sample_id, branch_id, action, from_status, to_status, actor_role, note)
+               VALUES (?, ?, (SELECT branch_id FROM lab_test_result WHERE id = ?), 'Auto-validated', 'Test Done', 'Verified', 'System', 'All parameters received and no flags raised')`,
+              [finalResultId, sample_id, finalResultId]
+            );
+          }
+        }
+      }
+    } catch (autoErr) {
+      console.error('Auto technical validation skipped:', autoErr.message);
+    }
+
+    // Critical values raise an alert (or clear one if an edit removed them).
+    try {
+      const [[meta]] = await connection.query('SELECT branch_id, report_version FROM lab_test_result WHERE id = ?', [finalResultId]);
+      const [[cat3]] = rulesTestId ? await connection.query('SELECT category_id FROM lab_tests WHERE id = ?', [rulesTestId]) : [[null]];
+      const wf3 = (await loadWorkflows(connection)).forCategory(cat3?.category_id);
+      await syncCriticalAlert(connection, { result_id: finalResultId, sample_id, branch_id: meta?.branch_id, patient_id: resolvedPatientId,
+        report_version: meta?.report_version, results: finalResultsForAuto, workflow: wf3, actor: auditActor });
+    } catch (critErr) {
+      console.error('Critical alert sync failed:', critErr.message);
+    }
+
+    // Sample lifecycle: a result arriving means the specimen is on the bench.
+    // Same transaction as the result, and best-effort — never blocks saving it.
+    if (sample_id) {
+      await advanceSampleQuietly(connection, {
+        sample_id, to: 'Processing', note: machine_no ? `Result received from ${machine_no}` : 'Result saved',
+        actor: actorFromReq(req, { id: tested_by || req.user?.id || null, station: machine_no ? `Analyzer ${machine_no}` : undefined }),
+      });
     }
 
     // Update bill item to 'Test Done' so it appears in the verification queue.
@@ -1776,7 +2282,10 @@ export const saveTestResults = async (req, res) => {
     // ============================================
     // AUTO-DEDUCT INVENTORY LOGIC
     // ============================================
-    if (test_id && labId) {
+    if (test_id && stockBranchId) {
+      // Reagents issued to this analyzer when their pack was loaded are already
+      // deducted (Reagent Changes) — skip them here so they are not counted twice.
+      const issuedOnLoad = await loadedInventoryItemIds(connection, machine_no);
       // Find mappings
       const [mappings] = await connection.query(
         'SELECT item_id, quantity_required FROM inventory_test_mapping WHERE test_id = ?',
@@ -1784,6 +2293,7 @@ export const saveTestResults = async (req, res) => {
       );
 
       for (const mapping of mappings) {
+        if (issuedOnLoad.has(mapping.item_id)) continue;
         let remainingToDeduct = parseFloat(mapping.quantity_required);
 
         // Fetch available batches for this item at this lab (branch), ordered by expiry (FIFO)
@@ -1791,7 +2301,7 @@ export const saveTestResults = async (req, res) => {
           `SELECT id, quantity_available FROM inventory_batches 
            WHERE item_id = ? AND branch_id = ? AND quantity_available > 0 AND status = 'Active'
            ORDER BY expiry_date ASC`,
-          [mapping.item_id, labId]
+          [mapping.item_id, stockBranchId]
         );
 
         for (const batch of batches) {
@@ -1809,7 +2319,7 @@ export const saveTestResults = async (req, res) => {
           await connection.query(
             `INSERT INTO inventory_transactions (item_id, batch_id, type, quantity, reference_type, reference_id, remarks, branch_id, created_by, test_id)
              VALUES (?, ?, 'OUT', ?, 'Test', ?, 'Auto-deducted for test execution', ?, ?, ?)`,
-            [mapping.item_id, batch.id, deductQty, sample_id, labId, tested_by || null, test_id]
+            [mapping.item_id, batch.id, deductQty, sample_id, stockBranchId, tested_by || null, test_id]
           );
 
           // Update batch status if depleted
@@ -1931,6 +2441,8 @@ export const getPendingVerifications = async (req, res) => {
       patients: 'p', billItems: 'bi', sampleId: 'tr.sample_id', testName: 'tr.test_name',
     });
 
+    // Staff pinned to a facility only see that facility's results.
+    const verifyScope = req.user?.role_level !== 'Central' && req.user?.branch_id ? req.user.branch_id : null;
     let statusFilter = "tr.status IN ('Test Done', 'Verified', 'Completed')";
     if (status && status !== 'all') {
       statusFilter = "tr.status = ?";
@@ -1950,6 +2462,10 @@ export const getPendingVerifications = async (req, res) => {
         tr.verified_at,
         tr.status,
         tr.notes,
+        tr.has_abnormal, tr.has_critical, tr.has_invalid, tr.has_delta,
+        tr.entry_mode, tr.manual_reason,
+        tr.approved_by, tr.approved_at, tr.branch_id, tr.report_version, lt.category_id,
+        (SELECT COUNT(*) FROM critical_alerts ca WHERE ca.result_id = tr.id AND ca.status = 'Open') AS critical_open,
         CONCAT(p.first_name, ' ', p.last_name) as patient_name,
         p.reg_no,
         CONCAT(u.first_name, ' ', u.last_name) as tested_by_name
@@ -1962,13 +2478,15 @@ export const getPendingVerifications = async (req, res) => {
       LEFT JOIN users u ON tr.tested_by = u.id
 
       WHERE ${statusFilter} AND (p.reg_no NOT LIKE 'ANL-%' OR p.reg_no IS NULL)
+      ${verifyScope ? 'AND tr.branch_id = ?' : ''}
       ${searchSql.clause}
 
-      ORDER BY tr.tested_at DESC`,
-      // Status param first (it appears earlier in the SQL), then the search
-      // params in the order identifierSearchClause emitted them.
-      [...(status && status !== 'all' ? [status] : []), ...searchSql.params]
+      ORDER BY tr.has_critical DESC, tr.tested_at DESC`,
+      // Status param first (it appears earlier in the SQL), then scope, then the
+      // search params in the order identifierSearchClause emitted them.
+      [...(status && status !== 'all' ? [status] : []), ...(verifyScope ? [verifyScope] : []), ...searchSql.params]
     );
+    const workflows = await loadWorkflows(db);
 
     // Parse JSON results for each test
     const formattedTests = tests.map(test => {
@@ -1981,9 +2499,16 @@ export const getPendingVerifications = async (req, res) => {
         results = [];
       }
 
+      const workflow = workflows.forCategory(test.category_id);
+      const action = nextAction(workflow, test.status, req.user, test);
+      const critBlocked = action.allowed && action.step === 'clinical' && workflow.critical_block_approval && Number(test.critical_open) > 0;
       return {
         ...test,
-        results
+        results,
+        workflow_levels: workflow.levels,
+        next_step: action.step,            // 'technical' | 'clinical' | null
+        can_act: action.allowed && !critBlocked && !req.user?.isDeviceKey,
+        blocked_reason: critBlocked ? 'Critical value not yet acknowledged by the clinician — record the notification first.' : (action.allowed ? null : action.reason || null),
       };
     });
 
@@ -2009,46 +2534,182 @@ export const verifyTest = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
+    const { test_result_id, sample_id, status, notes, password } = req.body; // status: 'Verified' (technical) | 'Approved' (clinical)
+    // Set only by the server itself when a doctor's USB-token signature (Poxia DSC
+    // Agent) completes — never from the request: { agent, dryRun, passwordVerified,
+    // approvedAt, signatureId, signedPdf, dscId }.
+    const internal = req.internal || null;
+
+    // Identity comes from the session, never from the request body.
+    const actor = req.user;
+    if (!actor?.id || actor.isDeviceKey) {
+      return res.status(403).json({ success: false, message: 'Sign in as a staff member to validate or authorize results.' });
+    }
+    if (!test_result_id || !sample_id || !status) {
+      return res.status(400).json({ success: false, message: 'test_result_id, sample_id and status are required' });
+    }
+    if (!['Verified', 'Approved'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status. Must be Verified or Approved' });
+    }
+
     await connection.beginTransaction();
-
-    const {
-      test_result_id,
-      sample_id,
-      verified_by,
-      status, // 'Verified' or 'Approved'
-      notes
-    } = req.body;
-
-    // Validate required fields
-    if (!test_result_id || !sample_id || !verified_by || !status) {
-      return res.status(400).json({
-        success: false,
-        message: 'test_result_id, sample_id, verified_by, and status are required'
-      });
+    const [[row]] = await connection.query(
+      `SELECT tr.id, tr.status, tr.tested_by, tr.verified_by, tr.branch_id, tr.has_invalid, tr.report_version, lt.category_id
+       FROM lab_test_result tr
+       LEFT JOIN bill_items bi ON bi.id = tr.bill_item_id
+       LEFT JOIN lab_tests lt ON lt.id = COALESCE(tr.test_id, bi.service_id)
+       WHERE tr.id = ? AND tr.sample_id = ? FOR UPDATE`,
+      [test_result_id, sample_id]
+    );
+    const pinned = actor.role_level !== 'Central' && actor.branch_id;
+    if (!row || (pinned && row.branch_id && Number(row.branch_id) !== Number(actor.branch_id))) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: 'Test result not found' });
     }
 
-    const validStatuses = ['Verified', 'Approved'];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
+    // The discipline's own workflow decides the steps, who may do them, and
+    // whether the same person may do both.
+    const workflows = await loadWorkflows(connection);
+    const workflow = workflows.forCategory(row.category_id);
+    const decision = nextAction(workflow, row.status, actor, row);
+    const wantStep = status === 'Verified' ? 'technical' : 'clinical';
+    if (!decision.step || decision.step !== wantStep) {
+      await connection.rollback();
+      return res.status(409).json({
         success: false,
-        message: 'Invalid status. Must be Verified or Approved'
+        message: workflow.levels === 'Two-level' && row.status === 'Test Done' && wantStep === 'clinical'
+          ? 'Technical validation is required before authorization.'
+          : decision.step ? `This result is waiting for ${decision.step === 'technical' ? 'technical validation' : 'authorization'}.`
+          : `This result is already ${row.status}.`,
       });
     }
+    if (!decision.allowed) {
+      await connection.rollback();
+      return res.status(403).json({ success: false, message: decision.reason });
+    }
+    if (wantStep === 'clinical' && workflow.critical_block_approval) {
+      const [[openCrit]] = await connection.query("SELECT COUNT(*) AS n FROM critical_alerts WHERE result_id = ? AND status = 'Open'", [row.id]);
+      if (Number(openCrit.n) > 0) {
+        await connection.rollback();
+        return res.status(409).json({ success: false, code: 'CRITICAL_UNACKNOWLEDGED', message: 'This result has a critical value that the clinician has not acknowledged. Record the notification (Critical Alerts) before authorizing.' });
+      }
+    }
+    if (row.has_invalid) {
+      await connection.rollback();
+      return res.status(409).json({ success: false, message: 'This result has invalid readings. Rerun or correct them before validating.' });
+    }
 
-    const verifiedAt = new Date();
+    // Authorization is an electronic signature: the doctor re-enters their own
+    // login password, and must have a registration number + signature on file.
+    let signer = null;
+    if (wantStep === 'clinical') {
+      const pw = internal?.passwordVerified ? { ok: true } : await confirmPassword(connection, actor.id, password);
+      if (!pw.ok) {
+        await connection.rollback();
+        return res.status(pw.status).json({ success: false, code: 'PASSWORD_REQUIRED', message: password ? pw.message : 'Enter your password to sign this report.' });
+      }
+      [[signer]] = await connection.query("SELECT CONCAT(first_name, ' ', last_name) AS name, registration_no, designation, signature_image FROM users WHERE id = ?", [actor.id]);
+      if (!signer?.registration_no || !signer?.signature_image) {
+        await connection.rollback();
+        return res.status(409).json({ success: false, code: 'SIGNATURE_PROFILE_INCOMPLETE', message: 'Add your registration number and signature (My Signature) before authorizing reports.' });
+      }
+    }
 
-    // Update test result with verification details
-    // If status is Approved, we also set approved_by
+    // The doctor's Digital Signature Certificate, when they have one (or the
+    // hospital requires one): opened here with the password they just typed,
+    // before anything is committed. The password is used in memory only.
+    let dsc = { signer: null };
+    let signedPdfBuf = null;
+    if (wantStep === 'clinical' && !internal?.agent) {
+      dsc = await prepareDscForApproval(connection, actor, row.branch_id, req.body.dsc_password);
+      if (dsc.error) {
+        await connection.rollback();
+        return res.status(dsc.error.status).json({ success: false, code: dsc.error.code, message: dsc.error.message });
+      }
+    }
+    // A check only: would this approval be accepted? (used before a signing job is created)
+    if (internal?.dryRun) {
+      await connection.rollback();
+      return res.json({ success: true, dry_run: true });
+    }
+
+    const verified_by = actor.id;
+    const verifiedAt = internal?.approvedAt || new Date();
+    if (wantStep === 'technical') {
+      await connection.query(
+        `UPDATE lab_test_result SET verified_by = ?, verified_at = ?, status = 'Verified', notes = COALESCE(?, notes), updated_at = NOW() WHERE id = ?`,
+        [actor.id, verifiedAt, notes || null, row.id]
+      );
+    } else {
+      await connection.query(
+        `UPDATE lab_test_result SET approved_by = ?, approved_at = ?, status = 'Approved',
+                verified_by = COALESCE(verified_by, ?), verified_at = COALESCE(verified_at, ?),
+                notes = COALESCE(?, notes), updated_at = NOW() WHERE id = ?`,
+        [actor.id, verifiedAt, actor.id, verifiedAt, notes || null, row.id]
+      );
+    }
+    let signatureId = null;
+    if (wantStep === 'clinical') {
+      const canonical = await canonicalReportContent(connection, row.id);
+      const hash = contentHash(canonical);
+      if (internal?.agent) {
+        // The signature row was created when the signing job started; it takes effect now,
+        // provided the report is still exactly what the doctor's token signed.
+        const [upd] = await connection.query(
+          `UPDATE report_signatures SET status = 'Valid', signer_name = ?, signer_role = ?, registration_no = ?, designation = ?, signature_image = ?,
+                  seal = ?, signed_at = ?, ip_address = ?, method = ?
+            WHERE id = ? AND result_id = ? AND status = 'Pending' AND content_hash = ?`,
+          [signer.name, actor.role || null, signer.registration_no, signer.designation || null, signer.signature_image,
+           sealFor({ hash, signerId: actor.id, signedAt: verifiedAt }), verifiedAt, req.ip || null, 'Login password + Digital Signature Certificate (USB token)',
+           internal.signatureId, row.id, hash]);
+        if (!upd.affectedRows) {
+          await connection.rollback();
+          return res.status(409).json({ success: false, code: 'REPORT_CHANGED', message: 'The report changed while it was being signed, so nothing was approved. Please approve it again.' });
+        }
+        signatureId = internal.signatureId;
+        await saveSignedReport(connection, {
+          signatureId, resultId: row.id, sampleId: sample_id, branchId: row.branch_id, dscId: internal.dscId, signerId: actor.id, pdf: internal.signedPdf,
+        });
+        signedPdfBuf = internal.signedPdf;
+      } else {
+        const [ins] = await connection.query(
+          `INSERT INTO report_signatures (result_id, sample_id, branch_id, signer_id, signer_name, signer_role, registration_no, designation, signature_image,
+                                          content_hash, seal, signed_at, ip_address)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [row.id, sample_id, row.branch_id, actor.id, signer.name, actor.role || null, signer.registration_no, signer.designation || null, signer.signature_image,
+           hash, sealFor({ hash, signerId: actor.id, signedAt: verifiedAt }), verifiedAt, req.ip || null]
+        );
+        signatureId = ins.insertId;
+      }
+
+      if (dsc.signer) {
+        // Build the final report exactly as it will be issued, sign it with the
+        // doctor's certificate and keep that signed file. Same transaction: if
+        // it cannot be signed, the report is not authorised.
+        try {
+          await connection.query('UPDATE report_signatures SET method = ? WHERE id = ?', ['Login password + Digital Signature Certificate', signatureId]);
+          const data = await buildLabReportData(sample_id, connection);
+          if (!data || data.authentication?.state !== 'Authentic') throw new Error('the report could not be prepared for signing');
+          data.dscSigner = dsc.signer;
+          signedPdfBuf = await pdfToBuffer(await generateLabReportPDFStream(data));
+          const check = verifyPdfSignature(signedPdfBuf);
+          if (!check.valid) throw new Error('the signed PDF did not verify');
+          await saveSignedReport(connection, {
+            signatureId, resultId: row.id, sampleId: sample_id, branchId: row.branch_id, dscId: dsc.row.id, signerId: actor.id, pdf: signedPdfBuf,
+          });
+        } catch (signErr) {
+          console.error('DSC signing at approval failed:', signErr);
+          await connection.rollback();
+          return res.status(500).json({ success: false, code: 'DSC_SIGNING_FAILED', message: `The report was not approved: it could not be digitally signed (${signErr.message}).` });
+        }
+      }
+    }
+    const [[who]] = await connection.query("SELECT CONCAT(first_name, ' ', last_name) AS name FROM users WHERE id = ?", [actor.id]);
     await connection.query(
-      `UPDATE lab_test_result 
-       SET verified_by = ?, 
-           verified_at = ?, 
-           approved_by = CASE WHEN ? = 'Approved' THEN ? ELSE approved_by END,
-           status = ?,
-           notes = COALESCE(?, notes),
-           updated_at = NOW()
-       WHERE id = ? AND sample_id = ?`,
-      [verified_by, verifiedAt, status, verified_by, status, notes || null, test_result_id, sample_id]
+      `INSERT INTO lab_result_audit (version, result_id, sample_id, branch_id, action, from_status, to_status, actor_id, actor_name, actor_role, note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [row.report_version, row.id, sample_id, row.branch_id, wantStep === 'technical' ? 'Technically validated' : 'Authorized and e-signed', row.status, status,
+       actor.id, who?.name || null, actor.role || null, [notes, signatureId ? `Signature #${signatureId}` : ''].filter(Boolean).join(' — ').slice(0, 500) || null]
     );
 
     // Also update bill_items status if status is Approved
@@ -2176,13 +2837,13 @@ export const verifyTest = async (req, res) => {
                    result_value: r.result_value || '',
                    unit: r.unit || '',
                    reference_range: r.reference_range || '',
-                   result_flag: (r.result_flag || 'normal').toLowerCase(),
+                   result_flag: externalFlag(r.result_flag),
                    is_subheader: r.is_subheader || false
                  }))
                }]
              };
              
-             const doc = await generateLabReportPDFStream(reportData);
+             const doc = await generateLabReportPDFStream({ ...reportData, signed_pdf: signedPdfBuf });
              const chunks = [];
              doc.on('data', chunk => chunks.push(chunk));
              doc.on('end', () => {
@@ -2207,7 +2868,13 @@ export const verifyTest = async (req, res) => {
                    'Content-Length': Buffer.byteLength(msgData)
                  }
                });
-               httpReq.on('error', e => console.log('WhatsApp HTTP error:', e.message));
+               // Logged as a delivery to the referring clinician (tender #42-43).
+               const deliveryLogged = recordDelivery({ sampleId: report.sample_id, channel: 'WhatsApp', recipient: `Doctor ${maskPhone(formattedPhone)}`,
+                 status: 'Sent', provider: 'bot', triggeredBy: 'Auto' });
+               httpReq.on('error', e => {
+                 console.log('WhatsApp HTTP error:', e.message);
+                 deliveryLogged.then((id) => updateDelivery(id, { status: 'Failed', error: e.message }));
+               });
                httpReq.write(msgData);
                httpReq.end();
              });
@@ -2347,13 +3014,13 @@ export const verifyTest = async (req, res) => {
                       result_value: r.result_value || '',
                       unit: r.unit || '',
                       reference_range: r.reference_range || '',
-                      result_flag: (r.result_flag || 'normal').toLowerCase(),
+                      result_flag: externalFlag(r.result_flag),
                       is_subheader: r.is_subheader || false
                     }))
                   }]
                 };
 
-                const cdacDoc = await generateLabReportPDFStream(cdacReportData);
+                const cdacDoc = await generateLabReportPDFStream({ ...cdacReportData, signed_pdf: signedPdfBuf });
                 const cdacPdfBase64 = await new Promise((resolve, reject) => {
                   const chunks = [];
                   cdacDoc.on('data', chunk => chunks.push(chunk));
@@ -2460,7 +3127,9 @@ export const verifyTest = async (req, res) => {
         sample_id,
         status,
         verified_by,
-        verified_at: verifiedAt
+        verified_at: verifiedAt,
+        dsc_signed: !!signedPdfBuf,
+        dsc_warning: dsc.warning || null,
       }
     });
 
@@ -2486,7 +3155,8 @@ export const verifyTest = async (req, res) => {
 // the doctor automatically — no separate "clear rerun" step needed.
 export const requestRerun = async (req, res) => {
   try {
-    const { test_result_id, sample_id, requested_by, reason } = req.body;
+    const { test_result_id, sample_id, reason } = req.body;
+    const requested_by = req.user?.id || null;   // from the session, not the request body
 
     if (!test_result_id || !sample_id) {
       return res.status(400).json({
@@ -2495,6 +3165,7 @@ export const requestRerun = async (req, res) => {
       });
     }
 
+    const [[before]] = await db.query('SELECT id, status, branch_id, report_version FROM lab_test_result WHERE id = ? AND sample_id = ?', [test_result_id, sample_id]);
     const [result] = await db.query(
       `UPDATE lab_test_result
        SET status = 'Rerun Requested',
@@ -2502,14 +3173,16 @@ export const requestRerun = async (req, res) => {
            rerun_requested_by = ?,
            rerun_requested_at = NOW(),
            updated_at = NOW()
-       WHERE id = ? AND sample_id = ?`,
-      [reason || null, requested_by || null, test_result_id, sample_id]
+       WHERE id = ? AND sample_id = ? AND status IN ('Test Done', 'Verified')`,
+      [reason || null, requested_by, test_result_id, sample_id]
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Test result not found' });
+      return res.status(409).json({ success: false, message: 'A rerun can only be requested for a result that is Test Done or Verified.' });
     }
 
+    await logResultAudit(db, { result_id: test_result_id, sample_id, branch_id: before?.branch_id || null, action: 'Rerun requested',
+      from_status: before?.status || null, to_status: 'Rerun Requested', actor: actorFromReq(req), reason, version: before?.report_version || null });
     res.json({ success: true, message: 'Rerun requested — sent back to the lab for re-testing' });
   } catch (error) {
     console.error('Error requesting rerun:', error);
@@ -2706,7 +3379,7 @@ export const getReportDetails = async (req, res) => {
  * enough to fetch somebody's results. Possession of the printed report is what
  * grants access, which is the same standard as the paper itself.
  */
-const reportQrSignature = (sampleId) =>
+export const reportQrSignature = (sampleId) =>
   crypto.createHmac('sha256', process.env.JWT_SECRET || 'jh-lims')
     .update(`report:${sampleId}`)
     .digest('hex')
@@ -2757,16 +3430,23 @@ export const reportBelongsTo = (data, query) => {
   );
 };
 
-export const buildLabReportData = async (sampleId) => {
-  const [rows] = await db.query(`
+/**
+ * opts.resultId / opts.signatureId: build the report for a specific result that
+ * is still waiting for its signature (Poxia DSC Agent), exactly as it will look
+ * once approved; opts.approvedAt / opts.approverName stand in for what the
+ * approval will record.
+ */
+export const buildLabReportData = async (sampleId, conn = db, opts = {}) => {
+  const [rows] = await conn.query(`
     SELECT
-      tr.id, tr.sample_id, tr.machine_no, tr.test_name, tr.results_json,
+      tr.id, tr.sample_id, tr.machine_no, tr.test_name, tr.results_json, tr.report_version,
       tr.tested_by, tr.tested_at, tr.verified_by, tr.verified_at, tr.notes,
       CONCAT(p.first_name, ' ', p.last_name) as patient_name,
       p.reg_no as patient_reg_no, p.gender, p.dob, p.telephone, p.abha_id,
       p.consultant_name, p.patient_type,
       CONCAT(ut.first_name, ' ', ut.last_name) as tested_by_name,
-      CONCAT(uv.first_name, ' ', uv.last_name) as verified_by_name,
+      COALESCE(NULLIF(CONCAT(ua.first_name, ' ', ua.last_name), ' '), CONCAT(uv.first_name, ' ', uv.last_name)) as verified_by_name,
+      COALESCE(tr.approved_at, tr.verified_at) as approved_time,
       i.name as lab_name,
       br.branch_name, br.address as branch_address, br.contact_number as branch_contact,
       d.name as branch_district
@@ -2774,17 +3454,20 @@ export const buildLabReportData = async (sampleId) => {
     LEFT JOIN patients p ON tr.patient_id = p.id
     LEFT JOIN users ut ON tr.tested_by = ut.id
     LEFT JOIN users uv ON tr.verified_by = uv.id
+    LEFT JOIN users ua ON tr.approved_by = ua.id
     LEFT JOIN bill_items bi ON tr.bill_item_id = bi.id
     LEFT JOIN bills b ON bi.bill_id = b.id
     LEFT JOIN branches br ON b.branch_id = br.id
     LEFT JOIN districts d ON d.id = br.district_id
     LEFT JOIN infrastructure i ON bi.lab_id = i.id
-    WHERE tr.sample_id = ? AND tr.status = 'Approved'
+    WHERE ${opts.resultId ? 'tr.id = ?' : "tr.sample_id = ? AND tr.status = 'Approved'"}
     ORDER BY tr.verified_at DESC
-    LIMIT 1`, [sampleId]);
+    LIMIT 1`, [opts.resultId || sampleId]);
 
   if (!rows.length) return null;
   const report = rows[0];
+  if (opts.approvedAt) report.approved_time = opts.approvedAt;
+  if (opts.approverName) report.verified_by_name = opts.approverName;
 
   let results = [];
   try {
@@ -2810,12 +3493,35 @@ export const buildLabReportData = async (sampleId) => {
     }).replace(',', '');
   };
 
-  const [settingsRows] = await db.query('SELECT * FROM hospital_settings LIMIT 1');
+  // Electronic authentication: the latest signature on this result, with a
+  // live check that the content still matches what the doctor signed.
+  let authentication = null;
+  const [[sig]] = opts.signatureId
+    ? await conn.query('SELECT * FROM report_signatures WHERE id = ? AND result_id = ?', [opts.signatureId, report.id])
+    : await conn.query("SELECT * FROM report_signatures WHERE result_id = ? AND status = 'Valid' ORDER BY id DESC LIMIT 1", [report.id]);
+  if (sig) {
+    const check = await checkSignature(conn, sig);
+    authentication = {
+      signer_name: sig.signer_name, designation: sig.designation, registration_no: sig.registration_no,
+      signature_image: sig.signature_image, signed_at: formatDate(sig.signed_at), state: check.state,
+      hash_short: sig.content_hash.slice(0, 16).toUpperCase(),
+      verify_url: `${PUBLIC_APP_URL}/verify-report/${sig.id}?k=${verifyKey(sig.id)}`,
+    };
+  }
+
+  // A corrected report says so, and why.
+  let amendment = null;
+  if (Number(report.report_version) > 1) {
+    const [[last]] = await conn.query('SELECT superseded_reason FROM lab_result_versions WHERE result_id = ? ORDER BY version DESC LIMIT 1', [report.id]);
+    amendment = { version: Number(report.report_version), reason: last?.superseded_reason || null };
+  }
+
+  const [settingsRows] = await conn.query('SELECT * FROM hospital_settings LIMIT 1');
   const hospitalSettings = settingsRows.length ? settingsRows[0] : null;
 
   // A merged sample runs several tests from one tube, so the report is titled
   // with all of them rather than whichever name the analyzer sent.
-  const [mergedRows] = await db.query(
+  const [mergedRows] = await conn.query(
     `SELECT service_name FROM bill_items WHERE sample_id = ? AND service_type = 'Laboratory' ORDER BY id`,
     [sampleId]
   );
@@ -2848,11 +3554,15 @@ export const buildLabReportData = async (sampleId) => {
     tested_by_name: report.tested_by_name || 'N/A',
     tested_at: formatDate(report.tested_at),
     verified_by_name: report.verified_by_name || 'N/A',
-    verified_at: formatDate(report.verified_at),
+    verified_at: formatDate(report.approved_time || report.verified_at),
+    authentication,
+    amendment,
     // Scanning this opens the PDF itself — on a phone camera, on the kiosk
     // scanner, anywhere. The signature is what makes it safe to leave
     // unauthenticated.
-    report_url: `${PUBLIC_API_URL}/api/lab/report/${encodeURIComponent(sampleId)}?k=${reportQrSignature(sampleId)}`,
+    // Signed reports point at the verification page (which links on to the
+    // PDF); legacy approved reports keep the direct PDF link.
+    report_url: authentication?.verify_url || `${PUBLIC_API_URL}/api/lab/report/${encodeURIComponent(sampleId)}?k=${reportQrSignature(sampleId)}`,
     tests: [{
       test_name: testName,
       sample_type: 'Blood Sample',
@@ -2866,7 +3576,7 @@ export const buildLabReportData = async (sampleId) => {
         result_value: r.result_value || '',
         unit: r.unit || '',
         reference_range: r.reference_range || r.ref_range || '',
-        result_flag: (r.result_flag || r.flag || 'normal').toString().toLowerCase(),
+        result_flag: externalFlag(r.result_flag || r.flag),
         is_subheader: r.is_subheader || false,
       })),
     }],
@@ -3491,6 +4201,7 @@ export const sendReadyReportToPatient = async (req, res) => {
       patientName: row.patient_name,
       testName: row.test_name || row.service_name,
     };
+    req.deliveryTrigger = 'Lobby board';
     return sendKioskReportWhatsApp(req, res);
   } catch (error) {
     console.error('sendReadyReportToPatient error:', error);
@@ -3557,6 +4268,8 @@ export const viewKioskReport = async (req, res) => {
       [sampleId]
     );
 
+    await recordDelivery({ sampleId, channel: 'Kiosk view', recipient: maskPhone(row.telephone), status: 'Delivered', triggeredBy: 'Patient kiosk', req });
+
     res.json({
       success: true,
       sample_id: row.sample_id,
@@ -3601,6 +4314,7 @@ export const printKioskReport = async (req, res) => {
     }
 
     const doc = await generateLabReportPDFStream(data);
+    await recordDelivery({ sampleId, channel: 'Kiosk print', recipient: maskPhone(data.patient_mobile), status: 'Delivered', triggeredBy: 'Patient kiosk', req });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="report-${sampleId}.pdf"`);
     doc.pipe(res);
@@ -3611,174 +4325,47 @@ export const printKioskReport = async (req, res) => {
 };
 
 export const sendKioskReportWhatsApp = async (req, res) => {
-  const { sampleId, phone, patientName, testName } = req.body;
+  const { sampleId, phone } = req.body;
 
   if (!sampleId || !phone) {
     return res.status(400).json({ success: false, message: 'sampleId and phone are required' });
   }
 
+  // This is a public, unauthenticated kiosk endpoint (see labRoutes.js) — the
+  // only thing stopping it from sending any patient's report to an arbitrary
+  // attacker-chosen phone number is proving the caller already knows the
+  // phone on file for this sample. dispatchReport enforces that (comparing
+  // the last 10 digits, so +91/0 prefixes and spacing all match), sends only
+  // to the number on file, honours an opt-out, and logs the delivery. The PDF
+  // is built by buildLabReportData, so the copy a patient receives is
+  // byte-for-byte the document the lab technician downloads.
   try {
-    const [rows] = await db.query(
-      `SELECT tr.id, tr.sample_id, tr.results_json, tr.notes, p.telephone AS patient_phone
-       FROM lab_test_result tr
-       LEFT JOIN patients p ON tr.patient_id = p.id
-       WHERE tr.sample_id = ? AND tr.status = 'Approved'
-       ORDER BY tr.verified_at DESC
-       LIMIT 1`,
-      [sampleId]
-    );
-    if (!rows.length) {
-      return res.status(404).json({ success: false, message: 'Report not found or not approved' });
-    }
-    const report = rows[0];
-
-    // This is a public, unauthenticated kiosk endpoint (see labRoutes.js) — the
-    // only thing stopping it from sending any patient's report to an arbitrary
-    // attacker-chosen phone number is proving the caller already knows the
-    // phone on file for this sample, the same way authenticatePatientPortal
-    // proves phone+DOB ownership for the patient portal.
-    //
-    // Compared as digits, not as strings. The same number reaches us in
-    // several shapes: staff and patients type 10 digits, while the CARE
-    // scraper stores the tel: href verbatim ("+919263287023"), so an exact
-    // string compare rejected the correct phone for every CARE-imported
-    // patient. Matching on the last 10 digits ignores the country code and
-    // any spacing without weakening the check — the caller still has to know
-    // the number on file.
-    const phoneDigits = (v) => String(v || '').replace(/\D/g, '').slice(-10);
-    const given = phoneDigits(phone);
-    if (given.length !== 10 || phoneDigits(report.patient_phone) !== given) {
-      return res.status(403).json({ success: false, message: 'Phone number does not match our records for this report' });
-    }
-
-    // Built by buildLabReportData, so the copy a patient receives on WhatsApp
-    // is byte-for-byte the document the lab technician downloads. They used to
-    // be assembled separately and the patient's was far thinner — no hospital
-    // branding, no UHID, no age or sex, no timestamps, no QR — so the same
-    // test said different things depending on who was holding it.
-    const reportData = await buildLabReportData(sampleId);
-    if (!reportData) {
-      return res.status(404).json({ success: false, message: 'Report not found or not approved' });
-    }
-
-    const doc = await generateLabReportPDFStream(reportData);
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
-    doc.on('end', async () => {
-      try {
-        const base64Pdf = Buffer.concat(chunks).toString('base64');
-
-        let normalizedPhone = phone.replace(/[\s\-\+]/g, '');
-        if (normalizedPhone.length === 10) normalizedPhone = '91' + normalizedPhone;
-
-        const caption = [
-          `🏥 *JHARKHAND STATE DIAGNOSTIC SERVICES*`,
-          `Powered by *Merilyzer LIS*`,
-          ``,
-          `✅ *Report Ready!*`,
-          `👤 *Patient:* ${patientName || 'Patient'}`,
-          `🔬 *Test:* ${testName || 'Lab Test'}`,
-          `🆔 *Sample ID:* ${sampleId}`,
-          ``,
-          `_Please find your lab report attached as PDF._`,
-          `_Thank you for choosing Meril HIMS._`
-        ].join('\n');
-
-        await sendWhatsAppMessage(normalizedPhone, caption, base64Pdf, `lab-report-${sampleId}.pdf`);
-        res.json({ success: true, message: 'Report sent on WhatsApp successfully' });
-      } catch (sendErr) {
-        // VAPT #8 (Improper Error Handling): sendErr can be a raw axios/network
-        // error from the WhatsApp bot call (e.g. connection details) — log it,
-        // don't hand it to the client.
-        console.error('Kiosk WhatsApp send error:', sendErr.message);
-        res.status(500).json({ success: false, message: 'Failed to send report on WhatsApp' });
-      }
+    await dispatchReport({
+      sampleId, channel: 'WhatsApp', recipient: phone, buildData: buildLabReportData,
+      triggeredBy: req.deliveryTrigger || 'Patient kiosk', req,
     });
+    res.json({ success: true, message: 'Report sent on WhatsApp successfully' });
   } catch (error) {
+    // VAPT #8 (Improper Error Handling): only DeliveryError messages are
+    // written for patients; anything else is logged, not echoed.
+    if (error instanceof DeliveryError) return res.status(error.status).json({ success: false, message: error.message });
     console.error('Kiosk WhatsApp send report error:', error.message);
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
 
-// Staff-facing "Resend" on the Reports page — same PDF/send pipeline as
-// sendKioskReportWhatsApp, but no phone-ownership check (the caller is
-// already an authenticated staff member here, not an anonymous kiosk),
-// and the phone comes from the patient record rather than a param the
-// caller supplies.
+// Staff-facing "Resend" on the Reports page — same dispatch path as the
+// kiosk, but no phone-ownership check (the caller is an authenticated staff
+// member); the number always comes from the patient record.
 export const resendReportWhatsApp = async (req, res) => {
   const { sampleId } = req.params;
-
   try {
-    const [rows] = await db.query(
-      `SELECT tr.id, tr.sample_id, tr.test_name, tr.results_json, tr.notes,
-              CONCAT(p.first_name, ' ', p.last_name) as patient_name,
-              p.telephone as patient_phone
-       FROM lab_test_result tr
-       LEFT JOIN patients p ON tr.patient_id = p.id
-       WHERE tr.sample_id = ? AND tr.status = 'Approved'
-       ORDER BY tr.verified_at DESC
-       LIMIT 1`,
-      [sampleId]
-    );
-    if (!rows.length) {
-      return res.status(404).json({ success: false, message: 'Approved report not found for this sample' });
-    }
-    const report = rows[0];
-    if (!report.patient_phone) {
-      return res.status(400).json({ success: false, message: 'No phone number on file for this patient' });
-    }
-
-    let results = [];
-    try {
-      results = typeof report.results_json === 'string' ? JSON.parse(report.results_json) : (report.results_json || []);
-    } catch (e) { results = []; }
-
-    const reportData = {
-      patient_name: report.patient_name || 'Unknown',
-      sample_id: report.sample_id,
-      tests: [{
-        test_name: report.test_name || 'Lab Test',
-        sample_type: 'Blood Sample',
-        accession_no: report.sample_id,
-        remarks: report.notes || 'Please correlate results clinically.',
-        parameters: results.map(r => ({
-          parameter_name: r.parameter_name || r.parameter_code || 'Unknown',
-          result_value: r.result_value || '',
-          unit: r.unit || '',
-          reference_range: r.reference_range || '',
-          result_flag: (r.result_flag || 'normal').toLowerCase(),
-          is_subheader: r.is_subheader || false
-        }))
-      }]
-    };
-
-    const doc = await generateLabReportPDFStream(reportData);
-    const chunks = [];
-    doc.on('data', chunk => chunks.push(chunk));
-    doc.on('end', async () => {
-      try {
-        const base64Pdf = Buffer.concat(chunks).toString('base64');
-        const caption = [
-          `🏥 *JHARKHAND STATE DIAGNOSTIC SERVICES*`,
-          `Powered by *Merilyzer LIS*`,
-          ``,
-          `✅ *Report Ready!*`,
-          `👤 *Patient:* ${report.patient_name || 'Patient'}`,
-          `🔬 *Test:* ${report.test_name || 'Lab Test'}`,
-          `🆔 *Sample ID:* ${sampleId}`,
-          ``,
-          `_Please find your lab report attached as PDF._`,
-          `_Thank you for choosing Meril HIMS._`
-        ].join('\n');
-
-        await sendWhatsAppMessage(report.patient_phone, caption, base64Pdf, `lab-report-${sampleId}.pdf`);
-        res.json({ success: true, message: 'Report sent on WhatsApp successfully' });
-      } catch (sendErr) {
-        console.error('Resend WhatsApp send error:', sendErr.message);
-        res.status(500).json({ success: false, message: 'Failed to send report on WhatsApp' });
-      }
+    const { recipient } = await dispatchReport({
+      sampleId, channel: 'WhatsApp', buildData: buildLabReportData, triggeredBy: 'Staff', actor: req.user, req,
     });
+    res.json({ success: true, message: `Report sent on WhatsApp to ${recipient}` });
   } catch (error) {
+    if (error instanceof DeliveryError) return res.status(error.status).json({ success: false, message: error.message });
     console.error('Resend report WhatsApp error:', error.message);
     res.status(500).json({ success: false, message: 'Server error' });
   }
